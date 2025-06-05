@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: autopromptr-backend
+    env: node
+    plan: starter # You can upgrade to standard for more resources
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false # You'll set this manually in Render dashboard
+      - key: SUPABASE_ANON_KEY
+        sync: false # You'll set this manually in Render dashboard
