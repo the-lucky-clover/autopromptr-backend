@@ -13,3 +13,6 @@ services:
         sync: false # You'll set this manually in Render dashboard
       - key: SUPABASE_ANON_KEY
         sync: false # You'll set this manually in Render dashboard
+      - key: SUPABASE_SERVICE_ROLE_KEY
+    	  sync: false # You'll set this manually in Render dashboard  
+        
