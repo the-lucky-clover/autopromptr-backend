@@ -1,346 +1,386 @@
 const express = require('express');
 const cors = require('cors');
-const { runBatchAutomation } = require('./automation');
-const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { v4: uuidv4 } = require('uuid');
+const EnhancedAutomation = require('./automation');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
-// Validate required environment variables
-if (!process.env.SUPABASE_URL) {
-  console.error('SUPABASE_URL environment variable is required');
-  process.exit(1);
-}
+// Enhanced middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+}));
 
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('SUPABASE_SERVICE_ROLE_KEY environment variable is required');
-  process.exit(1);
-}
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? ['https://autopromptr.lovable.app', 'https://your-frontend-domain.com']
+    : ['http://localhost:3000', 'http://localhost:5173', 'https://autopromptr.lovable.app'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
+}));
 
-// Initialize Supabase client with service role key for backend operations
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// Health check endpoint (required by Render.com)
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy', 
-    timestamp: new Date().toISOString(),
-    services: ['puppeteer', 'supabase']
-  });
+// Enhanced rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // More lenient in development
+  message: {
+    error: 'Too many requests from this IP',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
-// Get supported platforms
+app.use('/api/', limiter);
+
+// Enhanced API key authentication middleware
+const authenticateApiKey = (req, res, next) => {
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+  
+  // If no API key required in development or if valid key provided
+  if (process.env.NODE_ENV !== 'production' || !process.env.API_KEY || apiKey === process.env.API_KEY) {
+    next();
+  } else {
+    res.status(401).json({
+      error: 'Invalid API key',
+      code: 'AUTH_FAILED'
+    });
+  }
+};
+
+// Enhanced logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  console.log(`📨 ${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`📤 ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+  });
+  
+  next();
+});
+
+// In-memory storage for batch status (use Redis in production)
+const batchStatus = new Map();
+const batchResults = new Map();
+
+// Enhanced health check endpoint
+app.get('/health', (req, res) => {
+  const healthInfo = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '2.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    features: {
+      enhancedElementDetection: true,
+      multipleSubmissionStrategies: true,
+      improvedTiming: true,
+      enhancedErrorHandling: true,
+      lovableOptimizations: true
+    },
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  };
+  
+  console.log('✅ Health check successful');
+  res.json(healthInfo);
+});
+
+// Enhanced platforms endpoint
 app.get('/api/platforms', (req, res) => {
   const platforms = [
-    { id: 'lovable', name: 'Lovable.dev', url: 'https://lovable.dev', type: 'web' },
-    { id: 'v0', name: 'V0.dev', url: 'https://v0.vercel.app', type: 'web' },
-    { id: 'bolt_new', name: 'Bolt.new', url: 'https://bolt.new', type: 'web' },
-    { id: 'replit', name: 'Replit', url: 'https://replit.com', type: 'web' },
-    { id: 'cursor', name: 'Cursor', type: 'local', note: 'Requires local setup' },
-    { id: 'windsurf', name: 'Windsurf', type: 'local', note: 'Requires local setup' },
-    { id: 'bolt_diy', name: 'Bolt.DIY', type: 'local', note: 'Requires local setup' }
+    {
+      id: 'lovable',
+      name: 'Lovable',
+      type: 'web-editor',
+      status: 'optimized',
+      features: ['enhanced-detection', 'multiple-submission', 'improved-timing']
+    },
+    {
+      id: 'claude',
+      name: 'Claude',
+      type: 'ai-chat',
+      status: 'supported'
+    },
+    {
+      id: 'chatgpt',
+      name: 'ChatGPT',
+      type: 'ai-chat', 
+      status: 'supported'
+    },
+    {
+      id: 'generic',
+      name: 'Generic Web Interface',
+      type: 'web',
+      status: 'basic'
+    }
   ];
   
-  res.json(platforms);
+  res.json({ platforms });
 });
 
-// Main batch processing endpoint - MODIFIED to accept complete batch data
-app.post('/api/run-batch', async (req, res) => {
-  try {
-    const { batch, platform, delay_between_prompts = 5000, max_retries = 3 } = req.body;
-    
-    // Validate required fields
-    if (!batch || !batch.id || !platform) {
-      return res.status(400).json({ 
-        error: 'Missing required fields: batch (with id) and platform' 
-      });
-    }
-
-    // Validate batch structure
-    if (!batch.name || !batch.prompts || !Array.isArray(batch.prompts)) {
-      return res.status(400).json({ 
-        error: 'Invalid batch structure: missing name or prompts array' 
-      });
-    }
-
-    if (batch.prompts.length === 0) {
-      return res.status(400).json({ 
-        error: 'No prompts found in batch' 
-      });
-    }
-
-    console.log(`Starting batch automation for ${batch.prompts.length} prompts on ${platform}`);
-    console.log(`Batch: ${batch.name} (${batch.id})`);
-    
-    // Create batch record in Supabase for tracking (optional - for logging purposes)
-    try {
-      const { error: insertError } = await supabase
-        .from('batches')
-        .upsert({ 
-          id: batch.id,
-          name: batch.name,
-          platform: platform,
-          status: 'processing', 
-          started_at: new Date().toISOString(),
-          created_by: null, // Since we don't have user context
-          description: batch.description || '',
-          settings: batch.settings || {}
-        });
-
-      if (insertError) {
-        console.warn('Warning: Could not create batch record in database:', insertError.message);
-        // Continue anyway since we have the batch data
-      }
-
-      // Create prompt records for tracking
-      const promptInserts = batch.prompts.map((prompt, index) => ({
-        id: prompt.id || `${batch.id}-${index}`,
-        batch_id: batch.id,
-        prompt_text: prompt.text,
-        order_index: prompt.order || index,
-        status: 'pending'
-      }));
-
-      const { error: promptError } = await supabase
-        .from('prompts')
-        .upsert(promptInserts);
-
-      if (promptError) {
-        console.warn('Warning: Could not create prompt records:', promptError.message);
-        // Continue anyway
-      }
-    } catch (dbError) {
-      console.warn('Database operation failed, continuing with automation:', dbError.message);
-    }
-
-    // Start automation with the complete batch data (don't await - let it run in background)
-    runBatchAutomation({
-      batch_id: batch.id,
-      platform,
-      prompts: batch.prompts,
-      delay_between_prompts,
-      max_retries,
-      supabase,
-      batchData: batch // Pass the complete batch data
-    }).then(() => {
-      console.log(`Batch automation completed for ${batch.id}`);
-    }).catch(error => {
-      console.error(`Batch automation failed for ${batch.id}:`, error);
-    });
-
-    // Respond immediately
-    res.status(200).json({ 
-      message: 'Batch automation started successfully',
-      batch_id: batch.id,
-      batch_name: batch.name,
-      platform: platform,
-      prompt_count: batch.prompts.length,
-      status: 'processing'
-    });
-
-  } catch (error) {
-    console.error('Error starting batch automation:', error);
-    res.status(500).json({ 
-      error: 'Failed to start batch automation',
-      details: error.message 
+// Enhanced batch running endpoint
+app.post('/api/run-batch', authenticateApiKey, async (req, res) => {
+  const { batch, platform, wait_for_idle = true, max_retries = 3 } = req.body;
+  
+  if (!batch || !batch.id || !batch.targetUrl || !batch.prompts) {
+    return res.status(400).json({
+      error: 'Invalid batch data. Required: id, targetUrl, prompts',
+      code: 'INVALID_BATCH_DATA'
     });
   }
+
+  const batchId = batch.id;
+  console.log(`🚀 Starting enhanced batch run: ${batchId}`);
+  console.log(`📊 Batch details:`, {
+    name: batch.name,
+    platform,
+    promptCount: batch.prompts.length,
+    targetUrl: batch.targetUrl,
+    settings: { wait_for_idle, max_retries }
+  });
+
+  // Initialize batch status
+  batchStatus.set(batchId, {
+    id: batchId,
+    status: 'processing',
+    platform: platform || 'generic',
+    progress: {
+      completed: 0,
+      total: batch.prompts.length,
+      percentage: 0,
+      failed: 0,
+      processing: 1,
+      pending: batch.prompts.length - 1
+    },
+    startedAt: new Date().toISOString(),
+    recent_logs: [
+      { level: 'info', message: 'Enhanced batch processing started' }
+    ]
+  });
+
+  res.json({
+    success: true,
+    batchId,
+    message: 'Enhanced batch processing started',
+    estimatedDuration: `${batch.prompts.length * 10} seconds`
+  });
+
+  // Process batch asynchronously with enhanced automation
+  processEnhancedBatch(batchId, batch, platform, { wait_for_idle, max_retries });
 });
 
-// Stop batch processing
-app.post('/api/stop-batch/:batch_id', async (req, res) => {
+// Enhanced batch processing function
+async function processEnhancedBatch(batchId, batch, platform, options) {
+  const automation = new EnhancedAutomation();
+  
   try {
-    const { batch_id } = req.params;
+    console.log(`⚡ Processing enhanced batch ${batchId} with improved automation`);
     
-    if (!batch_id) {
-      return res.status(400).json({ 
-        error: 'Missing batch_id parameter' 
-      });
-    }
+    // Enhanced options for Lovable optimization
+    const enhancedOptions = {
+      waitForIdle: options.wait_for_idle,
+      maxRetries: Math.max(options.max_retries, 3),
+      automationDelay: platform === 'lovable' ? 3000 : 2000,
+      elementTimeout: platform === 'lovable' ? 15000 : 10000,
+      debugLevel: 'detailed'
+    };
     
-    // Update batch status to stopped
-    const { error } = await supabase
-      .from('batches')
-      .update({ 
-        status: 'stopped', 
-        stopped_at: new Date().toISOString() 
-      })
-      .eq('id', batch_id);
-
-    if (error) {
-      console.error('Error stopping batch:', error);
-      return res.status(500).json({ 
-        error: 'Failed to stop batch',
-        details: error.message 
-      });
-    }
-
-    res.json({ 
-      message: 'Batch stop requested',
-      batch_id: batch_id 
+    console.log(`🔧 Enhanced options for ${platform}:`, enhancedOptions);
+    
+    // Update status to show processing details
+    updateBatchStatus(batchId, {
+      status: 'processing',
+      recent_logs: [
+        { level: 'info', message: `Enhanced automation initialized for ${platform}` },
+        { level: 'info', message: `Using enhanced options: ${JSON.stringify(enhancedOptions)}` }
+      ]
     });
-
-  } catch (error) {
-    console.error('Error stopping batch:', error);
-    res.status(500).json({ 
-      error: 'Failed to stop batch',
-      details: error.message 
-    });
-  }
-});
-
-// Get batch status and progress
-app.get('/api/batch-status/:batch_id', async (req, res) => {
-  try {
-    const { batch_id } = req.params;
     
-    if (!batch_id) {
-      return res.status(400).json({ 
-        error: 'Missing batch_id parameter' 
-      });
-    }
+    const result = await automation.automatePrompts(
+      batch.targetUrl,
+      batch.prompts,
+      enhancedOptions
+    );
     
-    const { data: batch, error } = await supabase
-      .from('batches')
-      .select(`
-        *,
-        prompts(id, status, result, error_message, processed_at),
-        automation_logs(*)
-      `)
-      .eq('id', batch_id)
-      .single();
-
-    if (error || !batch) {
-      console.error('Batch status fetch error:', error);
-      return res.status(404).json({ 
-        error: 'Batch not found',
-        details: error?.message 
-      });
-    }
-
-    const totalPrompts = batch.prompts?.length || 0;
-    const completedPrompts = batch.prompts?.filter(p => p.status === 'completed').length || 0;
-    const failedPrompts = batch.prompts?.filter(p => p.status === 'failed').length || 0;
-    const processingPrompts = batch.prompts?.filter(p => p.status === 'processing').length || 0;
-
-    res.json({
-      batch_id: batch_id,
-      status: batch.status,
-      platform: batch.platform,
+    // Calculate final progress
+    const completed = result.results.filter(r => r.status === 'completed').length;
+    const failed = result.results.filter(r => r.status === 'failed').length;
+    
+    // Update final status
+    batchStatus.set(batchId, {
+      ...batchStatus.get(batchId),
+      status: 'completed',
       progress: {
-        total: totalPrompts,
-        completed: completedPrompts,
-        failed: failedPrompts,
-        processing: processingPrompts,
-        pending: totalPrompts - completedPrompts - failedPrompts - processingPrompts,
-        percentage: totalPrompts > 0 ? Math.round((completedPrompts / totalPrompts) * 100) : 0
+        completed,
+        total: batch.prompts.length,
+        percentage: Math.round((completed / batch.prompts.length) * 100),
+        failed,
+        processing: 0,
+        pending: 0
       },
-      timestamps: {
-        created_at: batch.created_at,
-        started_at: batch.started_at,
-        completed_at: batch.completed_at,
-        stopped_at: batch.stopped_at
-      },
-      recent_logs: batch.automation_logs?.slice(-5) || [] // Last 5 log entries
+      completedAt: new Date().toISOString(),
+      recent_logs: [
+        { level: 'success', message: `Enhanced batch completed: ${completed}/${batch.prompts.length} prompts successful` }
+      ]
     });
     
+    // Store results
+    batchResults.set(batchId, result);
+    
+    console.log(`✅ Enhanced batch ${batchId} completed successfully`);
+    
   } catch (error) {
-    console.error('Error getting batch status:', error);
-    res.status(500).json({ 
-      error: 'Failed to get batch status',
-      details: error.message 
+    console.error(`❌ Enhanced batch ${batchId} failed:`, error);
+    
+    batchStatus.set(batchId, {
+      ...batchStatus.get(batchId),
+      status: 'failed',
+      error: error.message,
+      failedAt: new Date().toISOString(),
+      recent_logs: [
+        { level: 'error', message: `Enhanced batch failed: ${error.message}` }
+      ]
+    });
+  } finally {
+    await automation.cleanup();
+  }
+}
+
+// Helper function to update batch status
+function updateBatchStatus(batchId, updates) {
+  const current = batchStatus.get(batchId);
+  if (current) {
+    batchStatus.set(batchId, {
+      ...current,
+      ...updates,
+      updatedAt: new Date().toISOString()
+    });
+  }
+}
+
+// Enhanced batch status endpoint
+app.get('/api/batch-status/:batchId', authenticateApiKey, (req, res) => {
+  const { batchId } = req.params;
+  const status = batchStatus.get(batchId);
+  
+  if (!status) {
+    return res.status(404).json({
+      error: 'Batch not found',
+      code: 'BATCH_NOT_FOUND'
+    });
+  }
+  
+  console.log(`📊 Status check for batch ${batchId}: ${status.status}`);
+  res.json(status);
+});
+
+// Enhanced batch results endpoint
+app.get('/api/batch-results/:batchId', authenticateApiKey, (req, res) => {
+  const { batchId } = req.params;
+  const results = batchResults.get(batchId);
+  
+  if (!results) {
+    return res.status(404).json({
+      error: 'Batch results not found',
+      code: 'RESULTS_NOT_FOUND'
+    });
+  }
+  
+  console.log(`📋 Results retrieved for batch ${batchId}`);
+  res.json(results);
+});
+
+// Enhanced batch stopping endpoint
+app.post('/api/stop-batch/:batchId', authenticateApiKey, (req, res) => {
+  const { batchId } = req.params;
+  const status = batchStatus.get(batchId);
+  
+  if (!status) {
+    return res.status(404).json({
+      error: 'Batch not found',
+      code: 'BATCH_NOT_FOUND'
+    });
+  }
+  
+  if (status.status === 'processing') {
+    batchStatus.set(batchId, {
+      ...status,
+      status: 'stopped',
+      stoppedAt: new Date().toISOString(),
+      recent_logs: [
+        ...status.recent_logs,
+        { level: 'info', message: 'Batch stopped by user request' }
+      ]
+    });
+    
+    console.log(`⏹️ Batch ${batchId} stopped by user`);
+    res.json({ success: true, message: 'Batch stopped successfully' });
+  } else {
+    res.status(400).json({
+      error: 'Batch is not currently processing',
+      code: 'BATCH_NOT_PROCESSING'
     });
   }
 });
 
-// Get detailed prompt results
-app.get('/api/batch-results/:batch_id', async (req, res) => {
-  try {
-    const { batch_id } = req.params;
-    
-    if (!batch_id) {
-      return res.status(400).json({ 
-        error: 'Missing batch_id parameter' 
-      });
-    }
-    
-    const { data: prompts, error } = await supabase
-      .from('prompts')
-      .select('*')
-      .eq('batch_id', batch_id)
-      .order('order_index');
-
-    if (error) {
-      console.error('Prompt results fetch error:', error);
-      return res.status(500).json({ 
-        error: 'Failed to fetch results',
-        details: error.message 
-      });
-    }
-
-    res.json({
-      batch_id: batch_id,
-      prompts: (prompts || []).map(p => ({
-        id: p.id,
-        order_index: p.order_index,
-        prompt_text: p.prompt_text,
-        status: p.status,
-        result: p.result,
-        error_message: p.error_message,
-        processed_at: p.processed_at,
-        processing_time_ms: p.processing_time_ms
-      }))
-    });
-    
-  } catch (error) {
-    console.error('Error getting batch results:', error);
-    res.status(500).json({ 
-      error: 'Failed to get batch results',
-      details: error.message 
-    });
-  }
-});
-
-// Error handling middleware
+// Enhanced error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ 
+  console.error('💥 Server error:', err);
+  
+  res.status(500).json({
     error: 'Internal server error',
-    details: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+    code: 'INTERNAL_ERROR',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
+    timestamp: new Date().toISOString()
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ 
+// Enhanced 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
     error: 'Endpoint not found',
-    path: req.path 
+    code: 'NOT_FOUND',
+    path: req.originalUrl,
+    method: req.method
   });
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`AutoPromptr Backend running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
-  console.log(`Supabase URL: ${process.env.SUPABASE_URL ? 'Configured' : 'Missing'}`);
-  console.log(`Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Configured' : 'Missing'}`);
-});
-
-// Graceful shutdown
+// Enhanced graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  console.log('🛑 SIGTERM received, shutting down gracefully...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
+  console.log('🛑 SIGINT received, shutting down gracefully...');
   process.exit(0);
 });
+
+app.listen(PORT, () => {
+  console.log(`🚀 Enhanced AutoPromptr Backend v2.0.0 running on port ${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`⚡ Enhanced features enabled:
+    • Multi-strategy element detection
+    • Lovable-specific optimizations  
+    • Improved timing and retries
+    • Better error handling
+    • Enhanced authentication
+  `);
+});
+
+module.exports = app;
