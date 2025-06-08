@@ -1,18 +1,64 @@
 services:
   - type: web
     name: autopromptr-backend
-    env: node
-    plan: starter # You can upgrade to standard for more resources
+    runtime: node
     buildCommand: npm install
     startCommand: npm start
+    plan: starter
     healthCheckPath: /health
+    
     envVars:
       - key: NODE_ENV
         value: production
-      - key: SUPABASE_URL
-        sync: false # You'll set this manually in Render dashboard
-      - key: SUPABASE_ANON_KEY
-        sync: false # You'll set this manually in Render dashboard
-      - key: SUPABASE_SERVICE_ROLE_KEY
-    	  sync: false # You'll set this manually in Render dashboard  
+      - key: PORT
+        value: 10000
+      - key: API_KEY
+        generateValue: true
         
+    # Enhanced resource allocation for better performance
+    disk:
+      name: autopromptr-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1
+      
+    # Enhanced scaling settings
+    autoDeploy: true
+    
+    # Enhanced headers for better security
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+        
+    # Enhanced build settings
+    buildFilter:
+      paths:
+      - server.js
+      - automation.js
+      - package.json
+      - package-lock.json
+      ignoredPaths:
+      - README.md
+      - .gitignore
+      - "*.md"
+      
+    # Enhanced environment for Puppeteer
+    dockerfilePath: ./Dockerfile
+    
+# Enhanced database for production (optional)
+databases:
+  - name: autopromptr-redis
+    plan: starter
+    
+# Enhanced notifications
+notifications:
+  - type: slack
+    name: deployment-alerts
+    config:
+      webhook: $SLACK_WEBHOOK_URL
