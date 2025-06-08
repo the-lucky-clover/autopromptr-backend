@@ -52,6 +52,55 @@ app.get('/api/platforms', (req, res) => {
   res.json(platforms);
 });
 
+// NEW: Check if batch exists endpoint (fixes the 404 errors)
+app.get('/api/batch-exists/:batch_id', async (req, res) => {
+  try {
+    const { batch_id } = req.params;
+    
+    if (!batch_id) {
+      return res.status(400).json({ 
+        error: 'Missing batch_id parameter' 
+      });
+    }
+
+    console.log(`Checking if batch exists: ${batch_id}`);
+
+    // Query the batches table to check if batch exists
+    const { data: batch, error } = await supabase
+      .from('batches')
+      .select('id')
+      .eq('id', batch_id)
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      
+      // If it's a "not found" error, return exists: false
+      if (error.code === 'PGRST116') {
+        console.log(`Batch not found: ${batch_id}`);
+        return res.status(200).json({ exists: false });
+      }
+      
+      // For other database errors, return 500
+      return res.status(500).json({ 
+        error: 'Database query failed', 
+        details: error.message 
+      });
+    }
+
+    // If we get here, the batch exists
+    console.log(`Batch found: ${batch_id}`);
+    res.status(200).json({ exists: true });
+
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error', 
+      details: error.message 
+    });
+  }
+});
+
 // Main batch processing endpoint
 app.post('/api/run-batch', async (req, res) => {
   try {
@@ -74,7 +123,7 @@ app.post('/api/run-batch', async (req, res) => {
       console.error('Batch fetch error:', batchError);
       return res.status(404).json({ 
         error: 'Batch not found',
-        details: batchError?.message 
+        details: batchError?.message || 'Invalid API key'
       });
     }
 
