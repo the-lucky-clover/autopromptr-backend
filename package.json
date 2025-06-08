@@ -40,10 +40,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/autopromptr-backend.git"
+    "url": "https://github.com/the-lucky-clover/autopromptr-backend.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/autopromptr-backend/issues"
+    "url": "https://github.com/the-lucky-clover/autopromptr-backend/issues"
   },
-  "homepage": "https://github.com/yourusername/autopromptr-backend#readme"
+  "homepage": "https://github.com/the-lucky-clover/autopromptr-backend#readme"
 }
