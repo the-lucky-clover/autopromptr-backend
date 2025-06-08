@@ -52,125 +52,95 @@ app.get('/api/platforms', (req, res) => {
   res.json(platforms);
 });
 
-// NEW: Check if batch exists endpoint (fixes the 404 errors)
-app.get('/api/batch-exists/:batch_id', async (req, res) => {
-  try {
-    const { batch_id } = req.params;
-    
-    if (!batch_id) {
-      return res.status(400).json({ 
-        error: 'Missing batch_id parameter' 
-      });
-    }
-
-    console.log(`Checking if batch exists: ${batch_id}`);
-
-    // Query the batches table to check if batch exists
-    const { data: batch, error } = await supabase
-      .from('batches')
-      .select('id')
-      .eq('id', batch_id)
-      .single();
-
-    if (error) {
-      console.error('Database error:', error);
-      
-      // If it's a "not found" error, return exists: false
-      if (error.code === 'PGRST116') {
-        console.log(`Batch not found: ${batch_id}`);
-        return res.status(200).json({ exists: false });
-      }
-      
-      // For other database errors, return 500
-      return res.status(500).json({ 
-        error: 'Database query failed', 
-        details: error.message 
-      });
-    }
-
-    // If we get here, the batch exists
-    console.log(`Batch found: ${batch_id}`);
-    res.status(200).json({ exists: true });
-
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    res.status(500).json({ 
-      error: 'Internal server error', 
-      details: error.message 
-    });
-  }
-});
-
-// Main batch processing endpoint
+// Main batch processing endpoint - MODIFIED to accept complete batch data
 app.post('/api/run-batch', async (req, res) => {
   try {
-    const { batch_id, platform, delay_between_prompts = 5000, max_retries = 3 } = req.body;
+    const { batch, platform, delay_between_prompts = 5000, max_retries = 3 } = req.body;
     
-    if (!batch_id || !platform) {
+    // Validate required fields
+    if (!batch || !batch.id || !platform) {
       return res.status(400).json({ 
-        error: 'Missing required fields: batch_id and platform' 
+        error: 'Missing required fields: batch (with id) and platform' 
       });
     }
 
-    // Fetch batch data from Supabase using service role
-    const { data: batch, error: batchError } = await supabase
-      .from('batches')
-      .select('*, prompts(*)')
-      .eq('id', batch_id)
-      .single();
-
-    if (batchError || !batch) {
-      console.error('Batch fetch error:', batchError);
-      return res.status(404).json({ 
-        error: 'Batch not found',
-        details: batchError?.message || 'Invalid API key'
+    // Validate batch structure
+    if (!batch.name || !batch.prompts || !Array.isArray(batch.prompts)) {
+      return res.status(400).json({ 
+        error: 'Invalid batch structure: missing name or prompts array' 
       });
     }
 
-    if (!batch.prompts || batch.prompts.length === 0) {
+    if (batch.prompts.length === 0) {
       return res.status(400).json({ 
         error: 'No prompts found in batch' 
       });
     }
 
     console.log(`Starting batch automation for ${batch.prompts.length} prompts on ${platform}`);
+    console.log(`Batch: ${batch.name} (${batch.id})`);
     
-    // Update batch status to processing
-    const { error: updateError } = await supabase
-      .from('batches')
-      .update({ 
-        status: 'processing', 
-        started_at: new Date().toISOString(),
-        platform: platform 
-      })
-      .eq('id', batch_id);
+    // Create batch record in Supabase for tracking (optional - for logging purposes)
+    try {
+      const { error: insertError } = await supabase
+        .from('batches')
+        .upsert({ 
+          id: batch.id,
+          name: batch.name,
+          platform: platform,
+          status: 'processing', 
+          started_at: new Date().toISOString(),
+          created_by: null, // Since we don't have user context
+          description: batch.description || '',
+          settings: batch.settings || {}
+        });
 
-    if (updateError) {
-      console.error('Error updating batch status:', updateError);
-      return res.status(500).json({ 
-        error: 'Failed to update batch status',
-        details: updateError.message 
-      });
+      if (insertError) {
+        console.warn('Warning: Could not create batch record in database:', insertError.message);
+        // Continue anyway since we have the batch data
+      }
+
+      // Create prompt records for tracking
+      const promptInserts = batch.prompts.map((prompt, index) => ({
+        id: prompt.id || `${batch.id}-${index}`,
+        batch_id: batch.id,
+        prompt_text: prompt.text,
+        order_index: prompt.order || index,
+        status: 'pending'
+      }));
+
+      const { error: promptError } = await supabase
+        .from('prompts')
+        .upsert(promptInserts);
+
+      if (promptError) {
+        console.warn('Warning: Could not create prompt records:', promptError.message);
+        // Continue anyway
+      }
+    } catch (dbError) {
+      console.warn('Database operation failed, continuing with automation:', dbError.message);
     }
 
-    // Start automation (don't await - let it run in background)
+    // Start automation with the complete batch data (don't await - let it run in background)
     runBatchAutomation({
-      batch_id,
+      batch_id: batch.id,
       platform,
       prompts: batch.prompts,
       delay_between_prompts,
       max_retries,
-      supabase
+      supabase,
+      batchData: batch // Pass the complete batch data
     }).then(() => {
-      console.log(`Batch automation completed for ${batch_id}`);
+      console.log(`Batch automation completed for ${batch.id}`);
     }).catch(error => {
-      console.error(`Batch automation failed for ${batch_id}:`, error);
+      console.error(`Batch automation failed for ${batch.id}:`, error);
     });
 
     // Respond immediately
     res.status(200).json({ 
       message: 'Batch automation started successfully',
-      batch_id: batch_id,
+      batch_id: batch.id,
+      batch_name: batch.name,
       platform: platform,
       prompt_count: batch.prompts.length,
       status: 'processing'
@@ -359,7 +329,7 @@ app.use((req, res) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`AutoPromptr Backend running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'production'}`);
   console.log(`Supabase URL: ${process.env.SUPABASE_URL ? 'Configured' : 'Missing'}`);
   console.log(`Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Configured' : 'Missing'}`);
 });
