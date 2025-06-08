@@ -4,7 +4,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { v4: uuidv4 } = require('uuid');
 const EnhancedAutomation = require('./automation');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -20,14 +19,51 @@ app.use(helmet({
   },
 }));
 
+// UPDATED CORS CONFIGURATION - Added your Lovable app domain
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://autopromptr.lovable.app', 'https://your-frontend-domain.com']
-    : ['http://localhost:3000', 'http://localhost:5173', 'https://autopromptr.lovable.app'],
+    ? [
+        'https://autopromptr.lovable.app', 
+        'https://your-frontend-domain.com',
+        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app' // Added your domain
+      ]
+    : [
+        'http://localhost:3000', 
+        'http://localhost:5173', 
+        'https://autopromptr.lovable.app',
+        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app' // Added for development too
+      ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
 }));
+
+// ADDITIONAL MANUAL CORS HEADERS (Option 2) - For extra compatibility
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    'https://autopromptr.lovable.app',
+    'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    console.log(`🔧 CORS preflight request from: ${origin}`);
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -43,7 +79,6 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
 app.use('/api/', limiter);
 
 // Enhanced API key authentication middleware
@@ -64,7 +99,7 @@ const authenticateApiKey = (req, res, next) => {
 // Enhanced logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
-  console.log(`📨 ${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip}`);
+  console.log(`📨 ${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip} - Origin: ${req.headers.origin || 'none'}`);
   
   res.on('finish', () => {
     const duration = Date.now() - start;
@@ -90,7 +125,8 @@ app.get('/health', (req, res) => {
       multipleSubmissionStrategies: true,
       improvedTiming: true,
       enhancedErrorHandling: true,
-      lovableOptimizations: true
+      lovableOptimizations: true,
+      corsEnabled: true
     },
     uptime: process.uptime(),
     memory: process.memoryUsage()
@@ -143,7 +179,6 @@ app.post('/api/run-batch', authenticateApiKey, async (req, res) => {
       code: 'INVALID_BATCH_DATA'
     });
   }
-
   const batchId = batch.id;
   console.log(`🚀 Starting enhanced batch run: ${batchId}`);
   console.log(`📊 Batch details:`, {
@@ -153,7 +188,7 @@ app.post('/api/run-batch', authenticateApiKey, async (req, res) => {
     targetUrl: batch.targetUrl,
     settings: { wait_for_idle, max_retries }
   });
-
+  
   // Initialize batch status
   batchStatus.set(batchId, {
     id: batchId,
@@ -172,14 +207,14 @@ app.post('/api/run-batch', authenticateApiKey, async (req, res) => {
       { level: 'info', message: 'Enhanced batch processing started' }
     ]
   });
-
+  
   res.json({
     success: true,
     batchId,
     message: 'Enhanced batch processing started',
     estimatedDuration: `${batch.prompts.length * 10} seconds`
   });
-
+  
   // Process batch asynchronously with enhanced automation
   processEnhancedBatch(batchId, batch, platform, { wait_for_idle, max_retries });
 });
@@ -374,12 +409,14 @@ process.on('SIGINT', () => {
 app.listen(PORT, () => {
   console.log(`🚀 Enhanced AutoPromptr Backend v2.0.0 running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔧 CORS enabled for Lovable domains`);
   console.log(`⚡ Enhanced features enabled:
     • Multi-strategy element detection
     • Lovable-specific optimizations  
     • Improved timing and retries
     • Better error handling
     • Enhanced authentication
+    • CORS configuration for Lovable
   `);
 });
 
