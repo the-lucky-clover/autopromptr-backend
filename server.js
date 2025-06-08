@@ -7,10 +7,21 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize Supabase client
+// Validate required environment variables
+if (!process.env.SUPABASE_URL) {
+  console.error('SUPABASE_URL environment variable is required');
+  process.exit(1);
+}
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('SUPABASE_SERVICE_ROLE_KEY environment variable is required');
+  process.exit(1);
+}
+
+// Initialize Supabase client with service role key for backend operations
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // Middleware
@@ -52,7 +63,7 @@ app.post('/api/run-batch', async (req, res) => {
       });
     }
 
-    // Fetch batch data from Supabase
+    // Fetch batch data from Supabase using service role
     const { data: batch, error: batchError } = await supabase
       .from('batches')
       .select('*, prompts(*)')
@@ -60,6 +71,7 @@ app.post('/api/run-batch', async (req, res) => {
       .single();
 
     if (batchError || !batch) {
+      console.error('Batch fetch error:', batchError);
       return res.status(404).json({ 
         error: 'Batch not found',
         details: batchError?.message 
@@ -75,7 +87,7 @@ app.post('/api/run-batch', async (req, res) => {
     console.log(`Starting batch automation for ${batch.prompts.length} prompts on ${platform}`);
     
     // Update batch status to processing
-    await supabase
+    const { error: updateError } = await supabase
       .from('batches')
       .update({ 
         status: 'processing', 
@@ -83,6 +95,14 @@ app.post('/api/run-batch', async (req, res) => {
         platform: platform 
       })
       .eq('id', batch_id);
+
+    if (updateError) {
+      console.error('Error updating batch status:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update batch status',
+        details: updateError.message 
+      });
+    }
 
     // Start automation (don't await - let it run in background)
     runBatchAutomation({
@@ -121,14 +141,28 @@ app.post('/api/stop-batch/:batch_id', async (req, res) => {
   try {
     const { batch_id } = req.params;
     
+    if (!batch_id) {
+      return res.status(400).json({ 
+        error: 'Missing batch_id parameter' 
+      });
+    }
+    
     // Update batch status to stopped
-    await supabase
+    const { error } = await supabase
       .from('batches')
       .update({ 
         status: 'stopped', 
         stopped_at: new Date().toISOString() 
       })
       .eq('id', batch_id);
+
+    if (error) {
+      console.error('Error stopping batch:', error);
+      return res.status(500).json({ 
+        error: 'Failed to stop batch',
+        details: error.message 
+      });
+    }
 
     res.json({ 
       message: 'Batch stop requested',
@@ -149,6 +183,12 @@ app.get('/api/batch-status/:batch_id', async (req, res) => {
   try {
     const { batch_id } = req.params;
     
+    if (!batch_id) {
+      return res.status(400).json({ 
+        error: 'Missing batch_id parameter' 
+      });
+    }
+    
     const { data: batch, error } = await supabase
       .from('batches')
       .select(`
@@ -160,16 +200,17 @@ app.get('/api/batch-status/:batch_id', async (req, res) => {
       .single();
 
     if (error || !batch) {
+      console.error('Batch status fetch error:', error);
       return res.status(404).json({ 
         error: 'Batch not found',
         details: error?.message 
       });
     }
 
-    const totalPrompts = batch.prompts.length;
-    const completedPrompts = batch.prompts.filter(p => p.status === 'completed').length;
-    const failedPrompts = batch.prompts.filter(p => p.status === 'failed').length;
-    const processingPrompts = batch.prompts.filter(p => p.status === 'processing').length;
+    const totalPrompts = batch.prompts?.length || 0;
+    const completedPrompts = batch.prompts?.filter(p => p.status === 'completed').length || 0;
+    const failedPrompts = batch.prompts?.filter(p => p.status === 'failed').length || 0;
+    const processingPrompts = batch.prompts?.filter(p => p.status === 'processing').length || 0;
 
     res.json({
       batch_id: batch_id,
@@ -189,7 +230,7 @@ app.get('/api/batch-status/:batch_id', async (req, res) => {
         completed_at: batch.completed_at,
         stopped_at: batch.stopped_at
       },
-      recent_logs: batch.automation_logs.slice(-5) // Last 5 log entries
+      recent_logs: batch.automation_logs?.slice(-5) || [] // Last 5 log entries
     });
     
   } catch (error) {
@@ -206,6 +247,12 @@ app.get('/api/batch-results/:batch_id', async (req, res) => {
   try {
     const { batch_id } = req.params;
     
+    if (!batch_id) {
+      return res.status(400).json({ 
+        error: 'Missing batch_id parameter' 
+      });
+    }
+    
     const { data: prompts, error } = await supabase
       .from('prompts')
       .select('*')
@@ -213,6 +260,7 @@ app.get('/api/batch-results/:batch_id', async (req, res) => {
       .order('order_index');
 
     if (error) {
+      console.error('Prompt results fetch error:', error);
       return res.status(500).json({ 
         error: 'Failed to fetch results',
         details: error.message 
@@ -221,7 +269,7 @@ app.get('/api/batch-results/:batch_id', async (req, res) => {
 
     res.json({
       batch_id: batch_id,
-      prompts: prompts.map(p => ({
+      prompts: (prompts || []).map(p => ({
         id: p.id,
         order_index: p.order_index,
         prompt_text: p.prompt_text,
@@ -242,9 +290,38 @@ app.get('/api/batch-results/:batch_id', async (req, res) => {
   }
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    details: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ 
+    error: 'Endpoint not found',
+    path: req.path 
+  });
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`AutoPromptr Backend running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Supabase connected: ${process.env.SUPABASE_URL ? 'Yes' : 'No'}`);
+  console.log(`Supabase URL: ${process.env.SUPABASE_URL ? 'Configured' : 'Missing'}`);
+  console.log(`Service Role Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Configured' : 'Missing'}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  process.exit(0);
 });
