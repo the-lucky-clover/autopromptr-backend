@@ -6,6 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "postinstall": "npx puppeteer browsers install chrome",
+    "install-chrome": "npx puppeteer browsers install chrome",
+    "test-chrome": "node -e \"const puppeteer = require('puppeteer'); puppeteer.launch().then(browser => { console.log('Chrome works!'); browser.close(); })\"",
+    "build": "echo 'No build step required'",
     "test": "jest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
@@ -16,7 +20,9 @@
     "lovable",
     "chat",
     "ai",
-    "enhanced"
+    "enhanced",
+    "web-scraping",
+    "batch-processing"
   ],
   "author": "AutoPromptr Team",
   "license": "MIT",
