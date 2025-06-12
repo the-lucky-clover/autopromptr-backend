@@ -25,13 +25,15 @@ app.use(cors({
     ? [
         'https://autopromptr.lovable.app', 
         'https://your-frontend-domain.com',
-        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app' // Added your domain
+        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+        'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com' // Added current domain
       ]
     : [
         'http://localhost:3000', 
         'http://localhost:5173', 
         'https://autopromptr.lovable.app',
-        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app' // Added for development too
+        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+        'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com'
       ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -43,6 +45,7 @@ app.use((req, res, next) => {
   const allowedOrigins = [
     'https://autopromptr.lovable.app',
     'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+    'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com',
     'http://localhost:3000',
     'http://localhost:5173'
   ];
@@ -126,7 +129,8 @@ app.get('/health', (req, res) => {
       improvedTiming: true,
       enhancedErrorHandling: true,
       lovableOptimizations: true,
-      corsEnabled: true
+      corsEnabled: true,
+      runPuppeteerEndpoint: true
     },
     uptime: process.uptime(),
     memory: process.memoryUsage()
@@ -167,6 +171,68 @@ app.get('/api/platforms', (req, res) => {
   ];
   
   res.json({ platforms });
+});
+
+// COMPATIBILITY ENDPOINT: /run-puppeteer for legacy frontend compatibility
+app.post('/run-puppeteer', authenticateApiKey, async (req, res) => {
+  console.log('🔄 Legacy /run-puppeteer endpoint called - redirecting to enhanced automation');
+  
+  const { targetUrl, textPrompt, platform = 'lovable' } = req.body;
+  
+  if (!targetUrl || !textPrompt) {
+    return res.status(400).json({
+      error: 'Missing required fields: targetUrl and textPrompt',
+      code: 'INVALID_REQUEST_DATA'
+    });
+  }
+
+  // Convert single prompt to batch format for enhanced processing
+  const batch = {
+    id: uuidv4(),
+    name: 'Legacy Single Prompt',
+    targetUrl,
+    prompts: [{ id: uuidv4(), text: textPrompt }]
+  };
+
+  const automation = new EnhancedAutomation();
+  
+  try {
+    console.log(`🚀 Processing legacy single prompt for ${targetUrl}`);
+    
+    const result = await automation.automatePrompts(targetUrl, batch.prompts, {
+      waitForIdle: true,
+      maxRetries: 3,
+      automationDelay: 3000,
+      elementTimeout: 15000,
+      debugLevel: 'detailed'
+    });
+    
+    // Return in legacy format for compatibility
+    res.json({
+      success: true,
+      message: 'Enhanced automation completed successfully',
+      result: {
+        status: 'completed',
+        prompt: textPrompt,
+        targetUrl,
+        completedAt: new Date().toISOString(),
+        results: result.results
+      }
+    });
+    
+    console.log('✅ Legacy single prompt completed successfully');
+    
+  } catch (error) {
+    console.error('❌ Legacy single prompt failed:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: 'AUTOMATION_FAILED'
+    });
+  } finally {
+    await automation.cleanup();
+  }
 });
 
 // Enhanced batch running endpoint
@@ -417,6 +483,7 @@ app.listen(PORT, () => {
     • Better error handling
     • Enhanced authentication
     • CORS configuration for Lovable
+    • Legacy /run-puppeteer endpoint
   `);
 });
 
