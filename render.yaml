@@ -1,11 +1,17 @@
 services:
   - type: web
     name: autopromptr-backend
-    runtime: node
+    env: node
     buildCommand: npm install
     startCommand: npm start
-    plan: starter
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
     healthCheckPath: /health
+
     
     envVars:
       - key: NODE_ENV
