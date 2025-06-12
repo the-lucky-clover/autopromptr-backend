@@ -488,3 +488,21 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
+// Test endpoint for running automated tests
+app.get('/test', authenticateApiKey, async (req, res) => {
+  try {
+    const testResults = await runAutomatedTests();
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      results: testResults
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
