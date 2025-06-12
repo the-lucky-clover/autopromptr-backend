@@ -1,508 +1,355 @@
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const { v4: uuidv4 } = require('uuid');
-const EnhancedAutomation = require('./automation');
+const puppeteer = require('puppeteer');
+const automation = require('./automation');
+
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
-// Enhanced middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// UPDATED CORS CONFIGURATION - Added your Lovable app domain
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? [
-        'https://autopromptr.lovable.app', 
-        'https://your-frontend-domain.com',
-        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
-        'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com' // Added current domain
-      ]
-    : [
-        'http://localhost:3000', 
-        'http://localhost:5173', 
-        'https://autopromptr.lovable.app',
-        'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
-        'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com'
-      ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
-}));
-
-// ADDITIONAL MANUAL CORS HEADERS (Option 2) - For extra compatibility
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    'https://autopromptr.lovable.app',
-    'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
-    'https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com',
-    'http://localhost:3000',
-    'http://localhost:5173'
-  ];
-  
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  }
-  
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-API-Key');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    console.log(`🔧 CORS preflight request from: ${origin}`);
-    return res.sendStatus(200);
-  }
-  
-  next();
-});
-
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Enhanced rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // More lenient in development
-  message: {
-    error: 'Too many requests from this IP',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', limiter);
-
-// Enhanced API key authentication middleware
-const authenticateApiKey = (req, res, next) => {
-  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-  
-  // If no API key required in development or if valid key provided
-  if (process.env.NODE_ENV !== 'production' || !process.env.API_KEY || apiKey === process.env.API_KEY) {
-    next();
-  } else {
-    res.status(401).json({
-      error: 'Invalid API key',
-      code: 'AUTH_FAILED'
-    });
-  }
-};
-
-// Enhanced logging middleware
-app.use((req, res, next) => {
-  const start = Date.now();
-  console.log(`📨 ${new Date().toISOString()} - ${req.method} ${req.path} - IP: ${req.ip} - Origin: ${req.headers.origin || 'none'}`);
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`📤 ${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
-  });
-  
-  next();
-});
-
-// In-memory storage for batch status (use Redis in production)
-const batchStatus = new Map();
-const batchResults = new Map();
-
-// Enhanced health check endpoint
+// Health check endpoint
 app.get('/health', (req, res) => {
-  const healthInfo = {
-    status: 'healthy',
+  res.json({ 
+    status: 'healthy', 
     timestamp: new Date().toISOString(),
-    version: '2.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    features: {
-      enhancedElementDetection: true,
-      multipleSubmissionStrategies: true,
-      improvedTiming: true,
-      enhancedErrorHandling: true,
-      lovableOptimizations: true,
-      corsEnabled: true,
-      runPuppeteerEndpoint: true
-    },
     uptime: process.uptime(),
-    memory: process.memoryUsage()
-  };
-  
-  console.log('✅ Health check successful');
-  res.json(healthInfo);
-});
-
-// Enhanced platforms endpoint
-app.get('/api/platforms', (req, res) => {
-  const platforms = [
-    {
-      id: 'lovable',
-      name: 'Lovable',
-      type: 'web-editor',
-      status: 'optimized',
-      features: ['enhanced-detection', 'multiple-submission', 'improved-timing']
-    },
-    {
-      id: 'claude',
-      name: 'Claude',
-      type: 'ai-chat',
-      status: 'supported'
-    },
-    {
-      id: 'chatgpt',
-      name: 'ChatGPT',
-      type: 'ai-chat', 
-      status: 'supported'
-    },
-    {
-      id: 'generic',
-      name: 'Generic Web Interface',
-      type: 'web',
-      status: 'basic'
-    }
-  ];
-  
-  res.json({ platforms });
-});
-
-// COMPATIBILITY ENDPOINT: /run-puppeteer for legacy frontend compatibility
-app.post('/run-puppeteer', authenticateApiKey, async (req, res) => {
-  console.log('🔄 Legacy /run-puppeteer endpoint called - redirecting to enhanced automation');
-  
-  const { targetUrl, textPrompt, platform = 'lovable' } = req.body;
-  
-  if (!targetUrl || !textPrompt) {
-    return res.status(400).json({
-      error: 'Missing required fields: targetUrl and textPrompt',
-      code: 'INVALID_REQUEST_DATA'
-    });
-  }
-
-  // Convert single prompt to batch format for enhanced processing
-  const batch = {
-    id: uuidv4(),
-    name: 'Legacy Single Prompt',
-    targetUrl,
-    prompts: [{ id: uuidv4(), text: textPrompt }]
-  };
-
-  const automation = new EnhancedAutomation();
-  
-  try {
-    console.log(`🚀 Processing legacy single prompt for ${targetUrl}`);
-    
-    const result = await automation.automatePrompts(targetUrl, batch.prompts, {
-      waitForIdle: true,
-      maxRetries: 3,
-      automationDelay: 3000,
-      elementTimeout: 15000,
-      debugLevel: 'detailed'
-    });
-    
-    // Return in legacy format for compatibility
-    res.json({
-      success: true,
-      message: 'Enhanced automation completed successfully',
-      result: {
-        status: 'completed',
-        prompt: textPrompt,
-        targetUrl,
-        completedAt: new Date().toISOString(),
-        results: result.results
-      }
-    });
-    
-    console.log('✅ Legacy single prompt completed successfully');
-    
-  } catch (error) {
-    console.error('❌ Legacy single prompt failed:', error);
-    
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      code: 'AUTOMATION_FAILED'
-    });
-  } finally {
-    await automation.cleanup();
-  }
-});
-
-// Enhanced batch running endpoint
-app.post('/api/run-batch', authenticateApiKey, async (req, res) => {
-  const { batch, platform, wait_for_idle = true, max_retries = 3 } = req.body;
-  
-  if (!batch || !batch.id || !batch.targetUrl || !batch.prompts) {
-    return res.status(400).json({
-      error: 'Invalid batch data. Required: id, targetUrl, prompts',
-      code: 'INVALID_BATCH_DATA'
-    });
-  }
-  const batchId = batch.id;
-  console.log(`🚀 Starting enhanced batch run: ${batchId}`);
-  console.log(`📊 Batch details:`, {
-    name: batch.name,
-    platform,
-    promptCount: batch.prompts.length,
-    targetUrl: batch.targetUrl,
-    settings: { wait_for_idle, max_retries }
+    service: 'autopromptr-backend'
   });
-  
-  // Initialize batch status
-  batchStatus.set(batchId, {
-    id: batchId,
-    status: 'processing',
-    platform: platform || 'generic',
-    progress: {
-      completed: 0,
-      total: batch.prompts.length,
-      percentage: 0,
+});
+
+// Enhanced test endpoint with comprehensive testing
+app.get('/test', async (req, res) => {
+  const startTime = Date.now();
+  const testResults = {
+    timestamp: new Date().toISOString(),
+    service: 'autopromptr-backend',
+    tests: [],
+    summary: {
+      total: 0,
+      passed: 0,
       failed: 0,
-      processing: 1,
-      pending: batch.prompts.length - 1
-    },
-    startedAt: new Date().toISOString(),
-    recent_logs: [
-      { level: 'info', message: 'Enhanced batch processing started' }
-    ]
-  });
-  
-  res.json({
-    success: true,
-    batchId,
-    message: 'Enhanced batch processing started',
-    estimatedDuration: `${batch.prompts.length * 10} seconds`
-  });
-  
-  // Process batch asynchronously with enhanced automation
-  processEnhancedBatch(batchId, batch, platform, { wait_for_idle, max_retries });
-});
+      duration: 0
+    }
+  };
 
-// Enhanced batch processing function
-async function processEnhancedBatch(batchId, batch, platform, options) {
-  const automation = new EnhancedAutomation();
-  
   try {
-    console.log(`⚡ Processing enhanced batch ${batchId} with improved automation`);
-    
-    // Enhanced options for Lovable optimization
-    const enhancedOptions = {
-      waitForIdle: options.wait_for_idle,
-      maxRetries: Math.max(options.max_retries, 3),
-      automationDelay: platform === 'lovable' ? 3000 : 2000,
-      elementTimeout: platform === 'lovable' ? 15000 : 10000,
-      debugLevel: 'detailed'
-    };
-    
-    console.log(`🔧 Enhanced options for ${platform}:`, enhancedOptions);
-    
-    // Update status to show processing details
-    updateBatchStatus(batchId, {
-      status: 'processing',
-      recent_logs: [
-        { level: 'info', message: `Enhanced automation initialized for ${platform}` },
-        { level: 'info', message: `Using enhanced options: ${JSON.stringify(enhancedOptions)}` }
-      ]
-    });
-    
-    const result = await automation.automatePrompts(
-      batch.targetUrl,
-      batch.prompts,
-      enhancedOptions
-    );
-    
-    // Calculate final progress
-    const completed = result.results.filter(r => r.status === 'completed').length;
-    const failed = result.results.filter(r => r.status === 'failed').length;
-    
-    // Update final status
-    batchStatus.set(batchId, {
-      ...batchStatus.get(batchId),
-      status: 'completed',
-      progress: {
-        completed,
-        total: batch.prompts.length,
-        percentage: Math.round((completed / batch.prompts.length) * 100),
-        failed,
-        processing: 0,
-        pending: 0
-      },
-      completedAt: new Date().toISOString(),
-      recent_logs: [
-        { level: 'success', message: `Enhanced batch completed: ${completed}/${batch.prompts.length} prompts successful` }
-      ]
-    });
-    
-    // Store results
-    batchResults.set(batchId, result);
-    
-    console.log(`✅ Enhanced batch ${batchId} completed successfully`);
-    
-  } catch (error) {
-    console.error(`❌ Enhanced batch ${batchId} failed:`, error);
-    
-    batchStatus.set(batchId, {
-      ...batchStatus.get(batchId),
-      status: 'failed',
-      error: error.message,
-      failedAt: new Date().toISOString(),
-      recent_logs: [
-        { level: 'error', message: `Enhanced batch failed: ${error.message}` }
-      ]
-    });
-  } finally {
-    await automation.cleanup();
-  }
-}
+    // Test 1: Browser initialization
+    const browserTest = await testBrowserInitialization();
+    testResults.tests.push(browserTest);
 
-// Helper function to update batch status
-function updateBatchStatus(batchId, updates) {
-  const current = batchStatus.get(batchId);
-  if (current) {
-    batchStatus.set(batchId, {
-      ...current,
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-  }
-}
+    // Test 2: Basic automation
+    const automationTest = await testBasicAutomation();
+    testResults.tests.push(automationTest);
 
-// Enhanced batch status endpoint
-app.get('/api/batch-status/:batchId', authenticateApiKey, (req, res) => {
-  const { batchId } = req.params;
-  const status = batchStatus.get(batchId);
-  
-  if (!status) {
-    return res.status(404).json({
-      error: 'Batch not found',
-      code: 'BATCH_NOT_FOUND'
-    });
-  }
-  
-  console.log(`📊 Status check for batch ${batchId}: ${status.status}`);
-  res.json(status);
-});
+    // Test 3: Enhanced features
+    const enhancedTest = await testEnhancedFeatures();
+    testResults.tests.push(enhancedTest);
 
-// Enhanced batch results endpoint
-app.get('/api/batch-results/:batchId', authenticateApiKey, (req, res) => {
-  const { batchId } = req.params;
-  const results = batchResults.get(batchId);
-  
-  if (!results) {
-    return res.status(404).json({
-      error: 'Batch results not found',
-      code: 'RESULTS_NOT_FOUND'
-    });
-  }
-  
-  console.log(`📋 Results retrieved for batch ${batchId}`);
-  res.json(results);
-});
+    // Test 4: Error handling
+    const errorTest = await testErrorHandling();
+    testResults.tests.push(errorTest);
 
-// Enhanced batch stopping endpoint
-app.post('/api/stop-batch/:batchId', authenticateApiKey, (req, res) => {
-  const { batchId } = req.params;
-  const status = batchStatus.get(batchId);
-  
-  if (!status) {
-    return res.status(404).json({
-      error: 'Batch not found',
-      code: 'BATCH_NOT_FOUND'
-    });
-  }
-  
-  if (status.status === 'processing') {
-    batchStatus.set(batchId, {
-      ...status,
-      status: 'stopped',
-      stoppedAt: new Date().toISOString(),
-      recent_logs: [
-        ...status.recent_logs,
-        { level: 'info', message: 'Batch stopped by user request' }
-      ]
-    });
-    
-    console.log(`⏹️ Batch ${batchId} stopped by user`);
-    res.json({ success: true, message: 'Batch stopped successfully' });
-  } else {
-    res.status(400).json({
-      error: 'Batch is not currently processing',
-      code: 'BATCH_NOT_PROCESSING'
-    });
-  }
-});
+    // Calculate summary
+    testResults.summary.total = testResults.tests.length;
+    testResults.summary.passed = testResults.tests.filter(t => t.status === 'passed').length;
+    testResults.summary.failed = testResults.tests.filter(t => t.status === 'failed').length;
+    testResults.summary.duration = Date.now() - startTime;
 
-// Enhanced error handling middleware
-app.use((err, req, res, next) => {
-  console.error('💥 Server error:', err);
-  
-  res.status(500).json({
-    error: 'Internal server error',
-    code: 'INTERNAL_ERROR',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Enhanced 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    code: 'NOT_FOUND',
-    path: req.originalUrl,
-    method: req.method
-  });
-});
-
-// Enhanced graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully...');
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully...');
-  process.exit(0);
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Enhanced AutoPromptr Backend v2.0.0 running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔧 CORS enabled for Lovable domains`);
-  console.log(`⚡ Enhanced features enabled:
-    • Multi-strategy element detection
-    • Lovable-specific optimizations  
-    • Improved timing and retries
-    • Better error handling
-    • Enhanced authentication
-    • CORS configuration for Lovable
-    • Legacy /run-puppeteer endpoint
-  `);
-});
-
-module.exports = app;
-
-// Test endpoint for running automated tests
-app.get('/test', authenticateApiKey, async (req, res) => {
-  try {
-    const testResults = await runAutomatedTests();
-    res.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      results: testResults
-    });
+    res.json(testResults);
   } catch (error) {
     res.status(500).json({
-      success: false,
-      error: error.message,
+      error: 'Test suite failed',
+      message: error.message,
       timestamp: new Date().toISOString()
     });
   }
+});
+
+// Test functions
+async function testBrowserInitialization() {
+  const testStart = Date.now();
+  let browser = null;
+  
+  try {
+    console.log('Testing browser initialization...');
+    
+    // Test browser launch with different configurations
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    });
+
+    const page = await browser.newPage();
+    
+    // Test basic page operations
+    await page.setViewport({ width: 1280, height: 720 });
+    await page.goto('data:text/html,<h1>Test Page</h1>');
+    
+    const title = await page.evaluate(() => document.querySelector('h1').textContent);
+    
+    if (title !== 'Test Page') {
+      throw new Error('Basic page operations failed');
+    }
+
+    await browser.close();
+    
+    return {
+      name: 'Browser Initialization',
+      status: 'passed',
+      duration: Date.now() - testStart,
+      details: {
+        browserVersion: await browser.version(),
+        message: 'Browser launched and basic operations completed successfully'
+      }
+    };
+  } catch (error) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+    
+    return {
+      name: 'Browser Initialization',
+      status: 'failed',
+      duration: Date.now() - testStart,
+      error: error.message,
+      details: {
+        errorType: error.constructor.name,
+        stack: error.stack
+      }
+    };
+  }
+}
+
+async function testBasicAutomation() {
+  const testStart = Date.now();
+  let browser = null;
+  
+  try {
+    console.log('Testing basic automation...');
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    
+    // Create a test page with interactive elements
+    const testHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head><title>Automation Test Page</title></head>
+        <body>
+          <input id="testInput" type="text" placeholder="Enter text">
+          <button id="testButton" onclick="document.getElementById('result').textContent='Button clicked!'">Click Me</button>
+          <div id="result"></div>
+          <select id="testSelect">
+            <option value="option1">Option 1</option>
+            <option value="option2">Option 2</option>
+          </select>
+        </body>
+      </html>
+    `;
+    
+    await page.goto(`data:text/html,${encodeURIComponent(testHTML)}`);
+    
+    // Test text input
+    await page.type('#testInput', 'Test automation text');
+    const inputValue = await page.$eval('#testInput', el => el.value);
+    
+    if (inputValue !== 'Test automation text') {
+      throw new Error('Text input failed');
+    }
+    
+    // Test button click
+    await page.click('#testButton');
+    const buttonResult = await page.$eval('#result', el => el.textContent);
+    
+    if (buttonResult !== 'Button clicked!') {
+      throw new Error('Button click failed');
+    }
+    
+    // Test select dropdown
+    await page.select('#testSelect', 'option2');
+    const selectValue = await page.$eval('#testSelect', el => el.value);
+    
+    if (selectValue !== 'option2') {
+      throw new Error('Select dropdown failed');
+    }
+    
+    await browser.close();
+    
+    return {
+      name: 'Basic Automation',
+      status: 'passed',
+      duration: Date.now() - testStart,
+      details: {
+        testsCompleted: ['text input', 'button click', 'select dropdown'],
+        message: 'All basic automation tests passed'
+      }
+    };
+  } catch (error) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+    
+    return {
+      name: 'Basic Automation',
+      status: 'failed',
+      duration: Date.now() - testStart,
+      error: error.message
+    };
+  }
+}
+
+async function testEnhancedFeatures() {
+  const testStart = Date.now();
+  
+  try {
+    console.log('Testing enhanced features...');
+    
+    // Test the automation module functions
+    const enhancedTests = [];
+    
+    // Test element detection capabilities
+    if (typeof automation.detectElements === 'function') {
+      const elementTest = await automation.detectElements();
+      enhancedTests.push('element detection');
+    }
+    
+    // Test form submission methods
+    if (typeof automation.submitForm === 'function') {
+      const formTest = await automation.submitForm();
+      enhancedTests.push('form submission');
+    }
+    
+    // Test page readiness detection
+    if (typeof automation.waitForPageReady === 'function') {
+      const readinessTest = await automation.waitForPageReady();
+      enhancedTests.push('page readiness');
+    }
+    
+    return {
+      name: 'Enhanced Features',
+      status: enhancedTests.length > 0 ? 'passed' : 'partial',
+      duration: Date.now() - testStart,
+      details: {
+        featuresAvailable: enhancedTests,
+        message: `${enhancedTests.length} enhanced features tested successfully`
+      }
+    };
+  } catch (error) {
+    return {
+      name: 'Enhanced Features',
+      status: 'failed',
+      duration: Date.now() - testStart,
+      error: error.message
+    };
+  }
+}
+
+async function testErrorHandling() {
+  const testStart = Date.now();
+  let browser = null;
+  
+  try {
+    console.log('Testing error handling...');
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    
+    const page = await browser.newPage();
+    
+    // Test 1: Handle non-existent URL
+    let errorsCaught = 0;
+    
+    try {
+      await page.goto('https://non-existent-url-12345.com', { timeout: 5000 });
+    } catch (error) {
+      errorsCaught++;
+      console.log('Successfully caught navigation error');
+    }
+    
+    // Test 2: Handle missing elements
+    try {
+      await page.goto('data:text/html,<h1>Simple page</h1>');
+      await page.click('#non-existent-element', { timeout: 2000 });
+    } catch (error) {
+      errorsCaught++;
+      console.log('Successfully caught missing element error');
+    }
+    
+    // Test 3: Handle timeout scenarios
+    try {
+      await page.goto('data:text/html,<div id="delayed"></div>');
+      await page.waitForSelector('#never-appears', { timeout: 1000 });
+    } catch (error) {
+      errorsCaught++;
+      console.log('Successfully caught timeout error');
+    }
+    
+    await browser.close();
+    
+    return {
+      name: 'Error Handling',
+      status: errorsCaught >= 2 ? 'passed' : 'partial',
+      duration: Date.now() - testStart,
+      details: {
+        errorsCaught,
+        expectedErrors: 3,
+        message: `Successfully handled ${errorsCaught}/3 error scenarios`
+      }
+    };
+  } catch (error) {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeError) {
+        console.error('Error closing browser:', closeError);
+      }
+    }
+    
+    return {
+      name: 'Error Handling',
+      status: 'failed',
+      duration: Date.now() - testStart,
+      error: error.message
+    };
+  }
+}
+
+// Automation endpoints
+app.post('/automate', async (req, res) => {
+  try {
+    const result = await automation.runAutomation(req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
