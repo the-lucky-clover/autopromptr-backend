@@ -1,369 +1,439 @@
 const puppeteer = require('puppeteer');
-const fs = require('fs').promises;
-const path = require('path');
 
-class EnhancedAutomation {
+class AutomationService {
   constructor() {
     this.browser = null;
-    this.page = null;
-    this.enhancedRetryAttempts = 5;
-    this.enhancedRetryDelay = 2000;
+    this.defaultOptions = {
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu'
+      ]
+    };
   }
 
-  // Enhanced element detection strategies for Lovable
-  async findChatInputWithStrategies(page) {
-    const strategies = [
-      {
-        name: 'Direct Lovable Selectors',
-        selectors: [
-          'textarea[placeholder*="Message"]',
-          'textarea[placeholder*="Chat"]',
-          'textarea[placeholder*="Ask"]',
-          'div[contenteditable="true"]',
-          '.chat-input textarea',
-          '[data-testid="chat-input"]',
-          '[aria-label*="chat"]',
-          '[aria-label*="message"]'
-        ]
-      },
-      {
-        name: 'Visible Input Detection',
-        selectors: [
-          'textarea:visible',
-          'input[type="text"]:visible',
-          'div[contenteditable="true"]:visible'
-        ]
-      },
-      {
-        name: 'Focus-based Detection',
-        selectors: [
-          'textarea:focus',
-          'input:focus',
-          '[contenteditable="true"]:focus'
-        ]
-      }
-    ];
-
-    for (const strategy of strategies) {
-      console.log(`🔍 Trying strategy: ${strategy.name}`);
-      
-      for (const selector of strategy.selectors) {
-        try {
-          const element = await page.$(selector);
-          if (element) {
-            const isVisible = await element.isIntersectingViewport();
-            if (isVisible) {
-              console.log(`✅ Found chat input with selector: ${selector}`);
-              return element;
-            }
-          }
-        } catch (err) {
-          console.log(`❌ Selector failed: ${selector}`, err.message);
-        }
-      }
-    }
-
-    throw new Error('CHAT_INPUT_NOT_FOUND: No chat input found after trying all strategies');
-  }
-
-  // Enhanced page waiting with Lovable-specific optimizations
-  async waitForLovablePageReady(page) {
-    console.log('🔄 Waiting for Lovable page to be ready...');
-    
+  async initializeBrowser(options = {}) {
     try {
-      // Wait for basic page load
-      await page.waitForLoadState('networkidle', { timeout: 30000 });
-      console.log('✅ Network idle achieved');
-      
-      // Wait for Lovable-specific elements
-      await page.waitForSelector('body', { timeout: 30000 });
-      console.log('✅ Body element loaded');
-      
-      // Additional wait for dynamic content
-      await page.waitForTimeout(3000);
-      console.log('✅ Dynamic content wait completed');
-      
-      // Check if Lovable editor is loaded
-      const isEditorLoaded = await page.evaluate(() => {
-        return document.querySelector('.lovable-editor, .editor-container, [data-testid="editor"]') !== null;
-      });
-      
-      if (isEditorLoaded) {
-        console.log('✅ Lovable editor detected');
-        await page.waitForTimeout(2000); // Extra wait for editor initialization
+      if (this.browser && this.browser.isConnected()) {
+        return this.browser;
       }
-      
-    } catch (err) {
-      console.warn('⚠️ Page readiness check failed:', err.message);
-      // Continue anyway with a basic wait
-      await page.waitForTimeout(5000);
-    }
-  }
 
-  // Multiple submission method attempts
-  async tryMultipleSubmissionMethods(page) {
-    const submissionMethods = [
-      {
-        name: 'Enter Key',
-        action: async () => await page.keyboard.press('Enter')
-      },
-      {
-        name: 'Submit Button Click',
-        action: async () => {
-          const submitBtn = await page.$('button[type="submit"], .submit-btn, [aria-label*="send"]');
-          if (submitBtn) await submitBtn.click();
-          else throw new Error('Submit button not found');
-        }
-      },
-      {
-        name: 'Send Icon Click',
-        action: async () => {
-          const sendIcon = await page.$('[data-testid="send"], .send-icon, svg[aria-label*="send"]');
-          if (sendIcon) await sendIcon.click();
-          else throw new Error('Send icon not found');
-        }
-      },
-      {
-        name: 'Ctrl+Enter Combination',
-        action: async () => await page.keyboard.press('Control+Enter')
-      }
-    ];
-
-    for (const method of submissionMethods) {
-      try {
-        console.log(`🔄 Trying submission method: ${method.name}`);
-        await method.action();
-        
-        // Wait to see if submission was successful
-        await page.waitForTimeout(2000);
-        
-        // Check if message was sent (input should be cleared or new message appears)
-        const isCleared = await page.evaluate(() => {
-          const inputs = Array.from(document.querySelectorAll('textarea, input, [contenteditable="true"]'));
-          return inputs.some(input => input.value === '' || input.textContent === '');
-        });
-        
-        if (isCleared) {
-          console.log(`✅ Submission successful with: ${method.name}`);
-          return true;
-        }
-        
-      } catch (err) {
-        console.log(`❌ ${method.name} failed:`, err.message);
-      }
-    }
-    
-    return false;
-  }
-
-  // Enhanced screenshot capture with proper return
-  async captureScreenshot(page, filename = null) {
-    try {
-      console.log('📸 Capturing enhanced screenshot...');
-      
-      const screenshotOptions = {
-        type: 'png',
-        fullPage: true,
-        encoding: 'base64'
-      };
-      
-      const screenshot = await page.screenshot(screenshotOptions);
-      
-      if (filename) {
-        // Save to file if filename provided
-        await fs.writeFile(filename, screenshot, 'base64');
-        console.log(`✅ Screenshot saved to: ${filename}`);
-      }
-      
-      console.log('✅ Screenshot captured successfully');
-      return screenshot; // Fixed: properly return the screenshot
-      
-    } catch (err) {
-      console.error('❌ Screenshot capture failed:', err);
-      throw new Error(`Screenshot capture failed: ${err.message}`);
-    }
-  }
-
-  // Enhanced text automation with multiple submission strategies
-  async automateTextEntryWithRetries(page, text) {
-    console.log(`🚀 Starting enhanced text automation for: "${text.substring(0, 50)}..."`);
-    
-    for (let attempt = 1; attempt <= this.enhancedRetryAttempts; attempt++) {
-      try {
-        console.log(`📝 Text entry attempt ${attempt}/${this.enhancedRetryAttempts}`);
-        
-        // Wait for page readiness
-        await this.waitForLovablePageReady(page);
-        
-        // Find chat input with enhanced strategies
-        const chatInput = await this.findChatInputWithStrategies(page);
-        
-        // Focus and prepare input
-        await chatInput.focus();
-        await page.waitForTimeout(500);
-        
-        // Clear existing content
-        await chatInput.evaluate(el => el.value = '');
-        await page.waitForTimeout(300);
-        
-        // Type the text with human-like timing
-        await chatInput.type(text, { delay: 75 });
-        console.log('✅ Text typed successfully');
-        
-        // Wait a moment for the text to register
-        await page.waitForTimeout(1000);
-        
-        // Try multiple submission strategies
-        const submitted = await this.tryMultipleSubmissionMethods(page);
-        
-        if (submitted) {
-          console.log('✅ Message submitted successfully');
-          
-          // Capture screenshot after successful submission
-          try {
-            const screenshot = await this.captureScreenshot(page);
-            return { success: true, screenshot }; // Return both status and screenshot
-          } catch (screenshotErr) {
-            console.warn('⚠️ Screenshot capture failed, but submission succeeded');
-            return { success: true, screenshot: null };
-          }
-        }
-        
-        throw new Error('Failed to submit message');
-        
-      } catch (err) {
-        console.error(`❌ Attempt ${attempt} failed:`, err.message);
-        
-        if (attempt === this.enhancedRetryAttempts) {
-          throw new Error(`TEXT_AUTOMATION_FAILED: Text automation failed after ${this.enhancedRetryAttempts} attempts: ${err.message}`);
-        }
-        
-        // Progressive backoff delay
-        const delay = this.enhancedRetryDelay * Math.pow(1.5, attempt - 1);
-        console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await page.waitForTimeout(delay);
-      }
-    }
-  }
-
-  async initializeBrowser() {
-    if (!this.browser) {
-      console.log('🚀 Initializing browser with enhanced settings...');
       this.browser = await puppeteer.launch({
-        headless: process.env.NODE_ENV === 'production',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-gpu'
-        ]
+        ...this.defaultOptions,
+        ...options
       });
-      console.log('✅ Browser initialized successfully');
+
+      console.log('Browser initialized successfully');
+      return this.browser;
+    } catch (error) {
+      console.error('Failed to initialize browser:', error);
+      throw new Error(`Browser initialization failed: ${error.message}`);
     }
-    return this.browser;
   }
 
-  async automatePrompts(targetUrl, prompts, options = {}) {
-    const { 
-      waitForIdle = true, 
-      maxRetries = 3, 
-      automationDelay = 3000,
-      elementTimeout = 15000,
-      debugLevel = 'detailed'
-    } = options;
-
-    console.log(`🎯 Starting enhanced automation for ${targetUrl}`);
-    console.log(`📊 Options:`, { waitForIdle, maxRetries, automationDelay, elementTimeout, debugLevel });
-
-    try {
+  async createPage() {
+    if (!this.browser || !this.browser.isConnected()) {
       await this.initializeBrowser();
-      this.page = await this.browser.newPage();
+    }
+
+    const page = await this.browser.newPage();
+    
+    // Set default viewport
+    await page.setViewport({ width: 1280, height: 720 });
+    
+    // Set user agent to avoid bot detection
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+    
+    return page;
+  }
+
+  async detectElements(page, options = {}) {
+    try {
+      const {
+        timeout = 5000,
+        selectors = ['input', 'button', 'select', 'textarea', 'a']
+      } = options;
+
+      const elements = {};
       
-      // Set enhanced viewport and user agent
-      await this.page.setViewport({ width: 1920, height: 1080 });
-      await this.page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      
-      console.log(`🌐 Navigating to: ${targetUrl}`);
-      await this.page.goto(targetUrl, { 
-        waitUntil: waitForIdle ? 'networkidle0' : 'load',
-        timeout: 60000 
-      });
-      
-      // Initial delay for page setup
-      console.log(`⏳ Initial automation delay: ${automationDelay}ms`);
-      await this.page.waitForTimeout(automationDelay);
-      
-      const results = [];
-      
-      for (let i = 0; i < prompts.length; i++) {
-        const prompt = prompts[i];
-        console.log(`\n📝 Processing prompt ${i + 1}/${prompts.length}: "${prompt.text.substring(0, 50)}..."`);
-        
+      for (const selector of selectors) {
         try {
-          const automationResult = await this.automateTextEntryWithRetries(this.page, prompt.text);
-          
-          results.push({
-            id: prompt.id,
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            screenshot: automationResult.screenshot // Include screenshot in result
-          });
-          
-          console.log(`✅ Prompt ${i + 1} completed successfully`);
-          
-          // Wait between prompts
-          if (i < prompts.length - 1) {
-            await this.page.waitForTimeout(2000);
-          }
-          
-        } catch (err) {
-          console.error(`❌ Prompt ${i + 1} failed:`, err.message);
-          
-          results.push({
-            id: prompt.id,
-            status: 'failed',
-            error: err.message,
-            timestamp: new Date().toISOString(),
-            screenshot: null
-          });
-          
-          // Continue with next prompt even if one fails
+          await page.waitForSelector(selector, { timeout: 1000 });
+          const elementCount = await page.$$eval(selector, els => els.length);
+          elements[selector] = elementCount;
+        } catch (error) {
+          elements[selector] = 0;
         }
       }
-      
-      console.log('🎉 Enhanced automation completed');
+
       return {
-        status: 'completed',
-        results,
-        completedAt: new Date().toISOString()
+        success: true,
+        elements,
+        timestamp: new Date().toISOString()
       };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  async waitForPageReady(page, options = {}) {
+    try {
+      const { timeout = 10000 } = options;
+
+      // Wait for DOM content to be loaded
+      await page.waitForFunction(
+        () => document.readyState === 'complete',
+        { timeout }
+      );
+
+      // Wait for network to be idle
+      await page.waitForLoadState?.('networkidle') || 
+            page.waitForFunction(() => 
+              performance.now() - performance.timing.loadEventEnd > 500
+            );
+
+      // Check for common loading indicators
+      const loadingSelectors = [
+        '.loading',
+        '.spinner',
+        '[data-loading="true"]',
+        '.loader'
+      ];
+
+      for (const selector of loadingSelectors) {
+        try {
+          await page.waitForSelector(selector, { state: 'hidden', timeout: 1000 });
+        } catch (error) {
+          // Loading indicator not found or already hidden, continue
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Page ready',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  async submitForm(page, options = {}) {
+    try {
+      const {
+        formSelector = 'form',
+        submitSelector = '[type="submit"], button[type="submit"], .submit-btn',
+        waitForNavigation = true,
+        timeout = 10000
+      } = options;
+
+      // Try to find and submit the form
+      const form = await page.$(formSelector);
+      if (!form) {
+        throw new Error(`Form not found with selector: ${formSelector}`);
+      }
+
+      // Try different submission methods
+      let submitted = false;
+
+      // Method 1: Click submit button
+      try {
+        const submitButton = await page.$(submitSelector);
+        if (submitButton) {
+          if (waitForNavigation) {
+            await Promise.all([
+              page.waitForNavigation({ timeout }),
+              submitButton.click()
+            ]);
+          } else {
+            await submitButton.click();
+          }
+          submitted = true;
+        }
+      } catch (error) {
+        console.log('Submit button method failed, trying alternatives...');
+      }
+
+      // Method 2: Submit form directly
+      if (!submitted) {
+        try {
+          if (waitForNavigation) {
+            await Promise.all([
+              page.waitForNavigation({ timeout }),
+              form.evaluate(form => form.submit())
+            ]);
+          } else {
+            await form.evaluate(form => form.submit());
+          }
+          submitted = true;
+        } catch (error) {
+          console.log('Direct form submit failed, trying keyboard...');
+        }
+      }
+
+      // Method 3: Press Enter key
+      if (!submitted) {
+        await page.keyboard.press('Enter');
+        if (waitForNavigation) {
+          try {
+            await page.waitForNavigation({ timeout });
+          } catch (error) {
+            // Navigation might not occur, that's okay
+          }
+        }
+        submitted = true;
+      }
+
+      return {
+        success: submitted,
+        method: submitted ? 'form submission completed' : 'no method succeeded',
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
+
+  async enhancedTextInput(page, selector, text, options = {}) {
+    try {
+      const {
+        clearFirst = true,
+        typeDelay = 50,
+        retries = 3
+      } = options;
+
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000 });
+          
+          if (clearFirst) {
+            await page.click(selector, { clickCount: 3 }); // Select all
+            await page.keyboard.press('Backspace');
+          }
+          
+          await page.type(selector, text, { delay: typeDelay });
+          
+          // Verify the text was entered
+          const actualValue = await page.$eval(selector, el => el.value);
+          if (actualValue === text) {
+            return {
+              success: true,
+              message: 'Text input successful',
+              attempts: attempt
+            };
+          }
+        } catch (error) {
+          if (attempt === retries) {
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      return {
+        success: false,
+        error: 'Text input failed after retries'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async smartClick(page, selector, options = {}) {
+    try {
+      const {
+        timeout = 5000,
+        retries = 3,
+        waitForElement = true
+      } = options;
+
+      for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+          if (waitForElement) {
+            await page.waitForSelector(selector, { timeout });
+          }
+
+          // Scroll element into view
+          await page.evaluate((sel) => {
+            const element = document.querySelector(sel);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, selector);
+
+          // Wait a bit for scroll to complete
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Try clicking
+          await page.click(selector);
+
+          return {
+            success: true,
+            message: 'Click successful',
+            attempts: attempt
+          };
+        } catch (error) {
+          if (attempt === retries) {
+            throw error;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async runAutomation(config) {
+    let page = null;
+    
+    try {
+      const {
+        url,
+        actions = [],
+        options = {}
+      } = config;
+
+      console.log(`Starting automation for: ${url}`);
       
-    } catch (err) {
-      console.error('💥 Enhanced automation failed:', err);
-      throw new Error(`Enhanced automation failed: ${err.message}`);
+      page = await this.createPage();
+      
+      // Navigate to the URL
+      await page.goto(url, { 
+        waitUntil: 'networkidle2',
+        timeout: 30000 
+      });
+
+      // Wait for page to be ready
+      await this.waitForPageReady(page);
+
+      const results = [];
+
+      // Execute actions
+      for (const action of actions) {
+        try {
+          let result;
+          
+          switch (action.type) {
+            case 'click':
+              result = await this.smartClick(page, action.selector, action.options);
+              break;
+              
+            case 'type':
+              result = await this.enhancedTextInput(page, action.selector, action.text, action.options);
+              break;
+              
+            case 'select':
+              await page.select(action.selector, action.value);
+              result = { success: true, message: 'Select completed' };
+              break;
+              
+            case 'wait':
+              await page.waitForSelector(action.selector, { timeout: action.timeout || 5000 });
+              result = { success: true, message: 'Wait completed' };
+              break;
+              
+            case 'submit':
+              result = await this.submitForm(page, action.options);
+              break;
+              
+            default:
+              result = { success: false, error: `Unknown action type: ${action.type}` };
+          }
+          
+          results.push({
+            action: action.type,
+            selector: action.selector,
+            ...result
+          });
+          
+        } catch (error) {
+          results.push({
+            action: action.type,
+            selector: action.selector,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+
+      return {
+        success: true,
+        url,
+        results,
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.error('Automation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
     } finally {
-      if (this.page) {
-        await this.page.close();
-        this.page = null;
+      if (page) {
+        try {
+          await page.close();
+        } catch (error) {
+          console.error('Error closing page:', error);
+        }
       }
     }
   }
 
-  async cleanup() {
-    if (this.page) {
-      await this.page.close();
-      this.page = null;
-    }
+  async closeBrowser() {
     if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
+      try {
+        await this.browser.close();
+        this.browser = null;
+        console.log('Browser closed successfully');
+      } catch (error) {
+        console.error('Error closing browser:', error);
+      }
     }
-    console.log('🧹 Enhanced automation cleanup completed');
   }
 }
 
-module.exports = EnhancedAutomation;
+// Create singleton instance
+const automationService = new AutomationService();
+
+// Export individual functions for backward compatibility
+module.exports = {
+  runAutomation: (config) => automationService.runAutomation(config),
+  detectElements: (page, options) => automationService.detectElements(page, options),
+  waitForPageReady: (page, options) => automationService.waitForPageReady(page, options),
+  submitForm: (page, options) => automationService.submitForm(page, options),
+  enhancedTextInput: (page, selector, text, options) => automationService.enhancedTextInput(page, selector, text, options),
+  smartClick: (page, selector, options) => automationService.smartClick(page, selector, options),
+  initializeBrowser: (options) => automationService.initializeBrowser(options),
+  closeBrowser: () => automationService.closeBrowser(),
+  
+  // Export the service instance for advanced usage
+  AutomationService,
+  automationService
+};
