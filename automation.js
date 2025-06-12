@@ -156,6 +156,34 @@ class EnhancedAutomation {
     return false;
   }
 
+  // Enhanced screenshot capture with proper return
+  async captureScreenshot(page, filename = null) {
+    try {
+      console.log('📸 Capturing enhanced screenshot...');
+      
+      const screenshotOptions = {
+        type: 'png',
+        fullPage: true,
+        encoding: 'base64'
+      };
+      
+      const screenshot = await page.screenshot(screenshotOptions);
+      
+      if (filename) {
+        // Save to file if filename provided
+        await fs.writeFile(filename, screenshot, 'base64');
+        console.log(`✅ Screenshot saved to: ${filename}`);
+      }
+      
+      console.log('✅ Screenshot captured successfully');
+      return screenshot; // Fixed: properly return the screenshot
+      
+    } catch (err) {
+      console.error('❌ Screenshot capture failed:', err);
+      throw new Error(`Screenshot capture failed: ${err.message}`);
+    }
+  }
+
   // Enhanced text automation with multiple submission strategies
   async automateTextEntryWithRetries(page, text) {
     console.log(`🚀 Starting enhanced text automation for: "${text.substring(0, 50)}..."`);
@@ -190,7 +218,15 @@ class EnhancedAutomation {
         
         if (submitted) {
           console.log('✅ Message submitted successfully');
-          return; // Success!
+          
+          // Capture screenshot after successful submission
+          try {
+            const screenshot = await this.captureScreenshot(page);
+            return { success: true, screenshot }; // Return both status and screenshot
+          } catch (screenshotErr) {
+            console.warn('⚠️ Screenshot capture failed, but submission succeeded');
+            return { success: true, screenshot: null };
+          }
         }
         
         throw new Error('Failed to submit message');
@@ -268,12 +304,13 @@ class EnhancedAutomation {
         console.log(`\n📝 Processing prompt ${i + 1}/${prompts.length}: "${prompt.text.substring(0, 50)}..."`);
         
         try {
-          await this.automateTextEntryWithRetries(this.page, prompt.text);
+          const automationResult = await this.automateTextEntryWithRetries(this.page, prompt.text);
           
           results.push({
             id: prompt.id,
             status: 'completed',
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            screenshot: automationResult.screenshot // Include screenshot in result
           });
           
           console.log(`✅ Prompt ${i + 1} completed successfully`);
@@ -290,7 +327,8 @@ class EnhancedAutomation {
             id: prompt.id,
             status: 'failed',
             error: err.message,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            screenshot: null
           });
           
           // Continue with next prompt even if one fails
