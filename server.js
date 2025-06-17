@@ -3,10 +3,7 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const express = require('express');
-const cors = require('cors');
 
-const app = express();
 
 // Replace this with the actual domain of your frontend
 const allowedOrigins = [
