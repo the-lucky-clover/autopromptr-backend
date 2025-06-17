@@ -28,7 +28,7 @@ app.use(cors({
 
 // CORS Configuration - CRITICAL FIX
 app.use(cors({
-  origin: ['https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com', 'https://lovable.dev', 'http://localhost:3000'],
+  origin: ['https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app', 'https://lovable.dev', 'http://localhost:3000', 'http://autopromptr.com'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   credentials: true
