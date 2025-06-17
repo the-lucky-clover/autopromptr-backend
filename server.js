@@ -3,6 +3,30 @@ const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
+const express = require('express');
+const cors = require('cors');
+
+const app = express();
+
+// Replace this with the actual domain of your frontend
+const allowedOrigins = [
+  'https://autopromptr.com',
+  'https://
+  'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+  'http://localhost:3000', // for local testing
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
+
 // CORS Configuration - CRITICAL FIX
 app.use(cors({
   origin: ['https://1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovableproject.com', 'https://lovable.dev', 'http://localhost:3000'],
