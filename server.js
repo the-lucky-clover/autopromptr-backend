@@ -4,30 +4,28 @@ const app = express();
 const port = process.env.PORT || 3000;
 const { processBatch } = require("./batchProcessor"); // Import processBatch
 
-// Replace this with the actual domain of your frontend
+// Allowed frontend origins
 const allowedOrigins = [
   "https://autopromptr.com",
   "https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app",
-  "http://localhost:3000", // for local testing
+  "https://lovable.dev",
+  "http://localhost:3000"
 ];
 
+// Single, unified CORS middleware with dynamic origin checking
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      return callback(new Error("Not allowed by CORS"));
     }
   },
-  credentials: true,
-}));
-
-// CORS Configuration - CRITICAL FIX
-app.use(cors({
-  origin: ["https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app", "https://lovable.dev", "http://localhost:3000", "http://autopromptr.com"],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
   allowedHeaders: ["Content-Type", "Authorization", "Accept"],
-  credentials: true
+  credentials: true,
 }));
 
 // Body parsing middleware
@@ -53,29 +51,27 @@ app.get("/test", (req, res) => {
   });
 });
 
-// MISSING ENDPOINT - This is what's causing the 404 errors
+// Batch processing endpoint
 app.post("/api/run-batch", async (req, res) => {
   try {
     console.log("Received batch request:", req.body);
-    
+
     const { batch, platform, wait_for_idle, max_retries } = req.body;
-    
-    // Validate required fields
+
     if (!batch || !batch.prompt) {
       return res.status(400).json({
         error: "Missing required fields: batch.prompt is required",
         received: req.body
       });
     }
-    
-    // Process the batch request
+
     const result = await processBatch(batch, platform, {
       waitForIdle: wait_for_idle,
       maxRetries: max_retries
     });
-    
+
     res.json(result);
-    
+
   } catch (error) {
     console.error("Batch processing error:", error);
     res.status(500).json({
@@ -103,5 +99,3 @@ app.options("*", (req, res) => {
 app.listen(port, () => {
   console.log(`AutoPromptr backend listening on port ${port}`);
 });
-
-
