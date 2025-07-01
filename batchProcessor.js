@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const { automateForm } = require('./automation');
 
 async function processBatch(batch, platform, options = {}) {
   console.log(`Processing batch ${batch.id} for platform ${platform}`);
@@ -47,29 +48,10 @@ async function processBatch(batch, platform, options = {}) {
 }
 
 async function processPrompt(page, prompt, options) {
-  // Implement your automation logic here
-  // This is where you'd parse the prompt and execute the automation
-  
-  console.log('Processing prompt:', prompt);
-  
-  // Example automation logic:
-  try {
-    // Parse and execute automation commands from the prompt
-    // This would depend on your specific automation implementation
-    
-    return {
-      success: true,
-      message: 'Automation completed successfully',
-      actions: ['Processed prompt: ' + prompt.substring(0, 100) + '...']
-    };
-    
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-      message: 'Automation failed'
-    };
-  }
+  // Call automateForm from automation.js
+  return await automateForm(page, prompt, options);
 }
 
 module.exports = { processBatch };
+
+
