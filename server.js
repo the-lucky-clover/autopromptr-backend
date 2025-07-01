@@ -118,3 +118,19 @@ app.options("*", (req, res) => {
 app.listen(port, () => {
   console.log(`AutoPromptr backend listening on port ${port}`);
 });
+
+
+const browser = await puppeteer.launch({
+  headless: true,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-accelerated-2d-canvas',
+    '--no-first-run',
+    '--no-zygote',
+    '--single-process',
+    '--disable-gpu'
+  ],
+  executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome'
+});
