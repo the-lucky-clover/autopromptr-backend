@@ -1,11 +1,9 @@
 // batchProcessor.js
-import puppeteer from "puppeteer-core";
-import chromium from "chrome-aws-lambda";
+import { chromium } from "playwright";
 import { automateForm } from "./automation.js";
 import logger from "./logger.js";
 
 export async function processBatch(batch, platform, options = {}) {
-  // Extract possible metadata from options for enhanced logging
   const { batchId = batch.id, ip } = options;
 
   logger.info(`[BatchProcessor] Processing batch ${batchId} for platform ${platform}`, {
@@ -21,23 +19,19 @@ export async function processBatch(batch, platform, options = {}) {
 
   let browser;
   try {
-    logger.info("[BatchProcessor] Launching Puppeteer browser...", {
+    logger.info("[BatchProcessor] Launching Playwright Chromium browser...", {
       batchId,
       platform,
       ip
     });
 
-    const executablePath = await chromium.executablePath || process.env.CHROME_PATH || "/usr/bin/google-chrome";
-
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
     if (batch.targetUrl) {
       logger.info(`[BatchProcessor] Navigating to target URL: ${batch.targetUrl}`, {
@@ -45,7 +39,7 @@ export async function processBatch(batch, platform, options = {}) {
         platform,
         ip
       });
-      await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded" });
+      await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
 
       if (waitForIdle) {
         logger.info("[BatchProcessor] Waiting for network idle on target URL...", {
@@ -53,16 +47,15 @@ export async function processBatch(batch, platform, options = {}) {
           platform,
           ip
         });
-        await page.goto(batch.targetUrl, {
-          waitUntil: "networkidle2",
-          timeout: 15000
-        }).catch(e => {
+        try {
+          await page.waitForLoadState("networkidle", { timeout: 15000 });
+        } catch (e) {
           logger.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${e.message}`, {
             batchId,
             platform,
             ip
           });
-        });
+        }
       }
     }
 
@@ -81,8 +74,9 @@ export async function processBatch(batch, platform, options = {}) {
         ip
       });
       screenshot = await page.screenshot({
-        encoding: "base64",
-        fullPage: true
+        type: "png",
+        fullPage: true,
+        encoding: "base64"
       });
       logger.info("[BatchProcessor] Screenshot taken.", {
         batchId,
@@ -102,6 +96,7 @@ export async function processBatch(batch, platform, options = {}) {
       platform,
       ip
     });
+
     return {
       batchId,
       status: automationResult.success ? "completed" : "failed",
