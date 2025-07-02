@@ -7,11 +7,14 @@ ENV NODE_ENV=production
 # Set working directory inside the container
 WORKDIR /app
 
-# Copy dependency files first for better layer caching
+# Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install Node.js dependencies including devDependencies for build tools
+# Step 1: Install dependencies
 RUN npm install --legacy-peer-deps
+
+# Step 2: Install TypeScript as a devDependency
+RUN npm install typescript --save-dev
 
 # Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
@@ -19,7 +22,7 @@ RUN npx playwright install --with-deps
 # Copy the application source code (everything in root)
 COPY . .
 
-# Build the TypeScript code explicitly
+# Step 3: Run the build
 RUN npm run build
 
 # Expose the app's port
