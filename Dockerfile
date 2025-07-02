@@ -1,10 +1,13 @@
 # Use official Playwright image with Node.js and all browser/system dependencies pre-installed
 FROM mcr.microsoft.com/playwright:focal
 
+# Set NODE_ENV to production before install for optimized installs
+ENV NODE_ENV=production
+
 # Set working directory inside the container
 WORKDIR /app
 
-# Copy dependency files first for layer caching
+# Copy dependency files first for better layer caching
 COPY package*.json ./
 
 # Install Node.js dependencies
