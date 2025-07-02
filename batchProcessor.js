@@ -26,9 +26,11 @@ export async function processBatch(batch, platform, options = {}) {
       ip
     });
     browser = await puppeteer.launch({
-      headless: true,
+      headless: "new",
+      executablePath: process.env.CHROME_PATH || undefined,
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
+
     const page = await browser.newPage();
 
     if (batch.targetUrl) {
@@ -45,7 +47,8 @@ export async function processBatch(batch, platform, options = {}) {
           platform,
           ip
         });
-        await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(e => {
+        // Puppeteer does not have page.waitForLoadState, use waitUntil: 'networkidle0' or 'networkidle2'
+        await page.goto(batch.targetUrl, { waitUntil: "networkidle2", timeout: 15000 }).catch(e => {
           logger.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${e.message}`, {
             batchId,
             platform,
