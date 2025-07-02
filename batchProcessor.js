@@ -1,8 +1,10 @@
+// batchProcessor.js
 import puppeteer from "puppeteer";
 import { automateForm } from "./automation.js";
+import logger from "./logger.js";
 
 export async function processBatch(batch, platform, options = {}) {
-  console.log(`[BatchProcessor] Processing batch ${batch.id} for platform ${platform}`);
+  logger.info(`[BatchProcessor] Processing batch ${batch.id} for platform ${platform}`);
 
   const {
     waitForIdle = true,
@@ -11,7 +13,7 @@ export async function processBatch(batch, platform, options = {}) {
 
   let browser;
   try {
-    console.log("[BatchProcessor] Launching Puppeteer browser...");
+    logger.info("[BatchProcessor] Launching Puppeteer browser...");
     browser = await puppeteer.launch({
       headless: true,
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
@@ -19,33 +21,33 @@ export async function processBatch(batch, platform, options = {}) {
     const page = await browser.newPage();
 
     if (batch.targetUrl) {
-      console.log(`[BatchProcessor] Navigating to target URL: ${batch.targetUrl}`);
+      logger.info(`[BatchProcessor] Navigating to target URL: ${batch.targetUrl}`);
       await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded" });
 
       if (waitForIdle) {
-        console.log("[BatchProcessor] Waiting for network idle on target URL...");
+        logger.info("[BatchProcessor] Waiting for network idle on target URL...");
         await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(e => {
-          console.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${e.message}`);
+          logger.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${e.message}`);
         });
       }
     }
 
-    console.log(`[BatchProcessor] Calling automateForm for prompt: ${batch.prompt.substring(0, 50)}...`);
+    logger.info(`[BatchProcessor] Calling automateForm for prompt: ${batch.prompt.substring(0, 50)}...`);
     const automationResult = await automateForm(page, batch.prompt, options);
 
     let screenshot = null;
     try {
-      console.log("[BatchProcessor] Taking screenshot...");
+      logger.info("[BatchProcessor] Taking screenshot...");
       screenshot = await page.screenshot({
         encoding: "base64",
         fullPage: true
       });
-      console.log("[BatchProcessor] Screenshot taken.");
+      logger.info("[BatchProcessor] Screenshot taken.");
     } catch (screenshotError) {
-      console.error(`[BatchProcessor] Error taking screenshot: ${screenshotError.message}`);
+      logger.error(`[BatchProcessor] Error taking screenshot: ${screenshotError.message}`);
     }
 
-    console.log(`[BatchProcessor] Batch ${batch.id} processing completed.`);
+    logger.info(`[BatchProcessor] Batch ${batch.id} processing completed.`);
     return {
       batchId: batch.id,
       status: automationResult.success ? "completed" : "failed",
@@ -56,7 +58,7 @@ export async function processBatch(batch, platform, options = {}) {
     };
 
   } catch (error) {
-    console.error(`[BatchProcessor] ❌ Batch processing failed for batch ${batch.id}: ${error.message}`);
+    logger.error(`[BatchProcessor] ❌ Batch processing failed for batch ${batch.id}: ${error.message}`);
     return {
       batchId: batch.id,
       status: "failed",
@@ -66,7 +68,7 @@ export async function processBatch(batch, platform, options = {}) {
     };
   } finally {
     if (browser) {
-      console.log("[BatchProcessor] Closing browser...");
+      logger.info("[BatchProcessor] Closing browser...");
       await browser.close();
     }
   }
