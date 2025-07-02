@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "test": "jest --experimental-vm-modules",
     "lint": "eslint . --ext .js,.mjs",
-    "audit:fix": "npm audit fix --force"
+    "audit:fix": "npm audit fix --force",
+    "postinstall": "playwright install chromium"
   },
   "dependencies": {
     "cors": "^2.8.5",
