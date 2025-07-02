@@ -4,7 +4,7 @@
     "module": "ES2022",
     "moduleResolution": "Node",
     "outDir": "dist",
-    "rootDir": ".",                             // Root directory is now the project root
+    "rootDir": ".",           // changed from "src"
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
@@ -13,6 +13,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts"],                          // Include all TS files at root level
-  "exclude": ["dist", "node_modules"]           // Ignore build output and dependencies
+  "include": ["*.ts"]         // changed from "src"
 }
