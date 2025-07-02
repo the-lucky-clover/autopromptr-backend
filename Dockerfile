@@ -10,8 +10,8 @@ WORKDIR /app
 # Copy dependency files first for better layer caching
 COPY package*.json ./
 
-# Install Node.js dependencies (including devDependencies for build tools)
-RUN npm install
+# Install Node.js dependencies including devDependencies for build tools
+RUN npm install --legacy-peer-deps
 
 # Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
