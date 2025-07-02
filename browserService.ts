@@ -1,8 +1,14 @@
-// browserService.ts
 import { chromium } from 'playwright';
+import fs from 'fs';
+import path from 'path';
 
-export async function launchBrowser(url: string): Promise<{ title: string; screenshot: string }> {
-  const browser = await chromium.launch({ headless: true });
+interface LaunchOptions {
+  url: string;
+  headful?: boolean;
+}
+
+export async function launchBrowser({ url, headful = false }: LaunchOptions): Promise<{ title: string; screenshotPath: string }> {
+  const browser = await chromium.launch({ headless: !headful });
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -10,11 +16,22 @@ export async function launchBrowser(url: string): Promise<{ title: string; scree
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
     const title = await page.title();
-    const screenshot = await page.screenshot({ type: 'png', encoding: 'base64', fullPage: true });
+
+    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    const screenshotDir = path.resolve('screenshots');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `screenshot-${timestamp}.png`;
+    const filepath = path.join(screenshotDir, filename);
+
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filepath, screenshotBuffer);
 
     return {
       title,
-      screenshot: `data:image/png;base64,${screenshot}`
+      screenshotPath: filepath
     };
   } finally {
     await browser.close();
