@@ -73,7 +73,8 @@ app.post("/api/run-batch", async (req, res) => {
 
     const result = await processBatch(batch, platform, {
       waitForIdle: wait_for_idle,
-      maxRetries: max_retries
+      maxRetries: max_retries,
+      ip: req.ip  // <-- pass ip here
     });
 
     logger.info("Batch processed successfully", {
