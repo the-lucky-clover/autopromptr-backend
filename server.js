@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
+import puppeteer from "puppeteer";
 import { processBatch } from "./batchProcessor.js";
 import logger from "./logger.js";
 
@@ -125,6 +126,35 @@ app.get("/debug/chrome-path", (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ basePath, files });
   });
+});
+
+// Debug endpoint to list installed Puppeteer revisions and executable paths
+app.get("/debug/chrome-executable-path", async (req, res) => {
+  try {
+    const browserFetcher = puppeteer.createBrowserFetcher();
+    const localRevisions = await browserFetcher.localRevisions();
+    const executablePaths = localRevisions.map(
+      rev => browserFetcher.revisionInfo(rev).executablePath
+    );
+
+    res.json({
+      message: "Puppeteer installed revisions and executable paths",
+      localRevisions,
+      executablePaths
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Debug endpoint to get Puppeteer's runtime executable path
+app.get("/debug/puppeteer-executable", async (req, res) => {
+  try {
+    const executablePath = puppeteer.executablePath();
+    res.json({ executablePath });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(port, () => {
