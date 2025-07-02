@@ -1,7 +1,7 @@
-const puppeteer = require("puppeteer");
-const { automateForm } = require("./automation");
+import puppeteer from "puppeteer";
+import { automateForm } from "./automation.js";
 
-async function processBatch(batch, platform, options = {}) {
+export async function processBatch(batch, platform, options = {}) {
   console.log(`[BatchProcessor] Processing batch ${batch.id} for platform ${platform}`);
 
   const {
@@ -11,7 +11,6 @@ async function processBatch(batch, platform, options = {}) {
 
   let browser;
   try {
-    // Initialize puppeteer browser
     console.log("[BatchProcessor] Launching Puppeteer browser...");
     browser = await puppeteer.launch({
       headless: true,
@@ -19,7 +18,6 @@ async function processBatch(batch, platform, options = {}) {
     });
     const page = await browser.newPage();
 
-    // Navigate to target URL if provided
     if (batch.targetUrl) {
       console.log(`[BatchProcessor] Navigating to target URL: ${batch.targetUrl}`);
       await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded" });
@@ -32,11 +30,9 @@ async function processBatch(batch, platform, options = {}) {
       }
     }
 
-    // Process the automation prompt
     console.log(`[BatchProcessor] Calling automateForm for prompt: ${batch.prompt.substring(0, 50)}...`);
     const automationResult = await automateForm(page, batch.prompt, options);
 
-    // Take screenshot if needed
     let screenshot = null;
     try {
       console.log("[BatchProcessor] Taking screenshot...");
@@ -47,7 +43,6 @@ async function processBatch(batch, platform, options = {}) {
       console.log("[BatchProcessor] Screenshot taken.");
     } catch (screenshotError) {
       console.error(`[BatchProcessor] Error taking screenshot: ${screenshotError.message}`);
-      // Continue without screenshot if it fails
     }
 
     console.log(`[BatchProcessor] Batch ${batch.id} processing completed.`);
@@ -55,9 +50,9 @@ async function processBatch(batch, platform, options = {}) {
       batchId: batch.id,
       status: automationResult.success ? "completed" : "failed",
       result: automationResult,
-      screenshot: screenshot,
+      screenshot,
       processedAt: new Date().toISOString(),
-      platform: platform
+      platform
     };
 
   } catch (error) {
@@ -67,7 +62,7 @@ async function processBatch(batch, platform, options = {}) {
       status: "failed",
       error: error.message,
       processedAt: new Date().toISOString(),
-      platform: platform
+      platform
     };
   } finally {
     if (browser) {
@@ -76,12 +71,3 @@ async function processBatch(batch, platform, options = {}) {
     }
   }
 }
-
-async function processPrompt(page, prompt, options) {
-  // Call automateForm from automation.js
-  return await automateForm(page, prompt, options);
-}
-
-module.exports = { processBatch };
-
-
