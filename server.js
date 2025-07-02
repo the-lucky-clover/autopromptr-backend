@@ -8,6 +8,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const allowedOrigins = [
+  "https://bolt-diy-34-1751466323377.vercel.app", // Your Vercel domain
   "https://autopromptr.com",
   "https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app",
   "https://lovable.dev",
