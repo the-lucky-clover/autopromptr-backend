@@ -2,9 +2,9 @@
 import express from "express";
 import cors from "cors";
 import fs from "fs";
+import os from "os";
 import path from "path";
-import { createBrowserFetcher } from "puppeteer-core";
-import chromium from "chrome-aws-lambda";
+import { chromium } from "playwright";
 import { processBatch } from "./batchProcessor.js";
 import logger from "./logger.js";
 
@@ -12,7 +12,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const allowedOrigins = [
-  "https://bolt-diy-34-1751466323377.vercel.app", // Your Vercel domain
+  "https://bolt-diy-34-1751466323377.vercel.app",
   "https://autopromptr.com",
   "https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app",
   "https://lovable.dev",
@@ -115,42 +115,48 @@ app.options("*", (req, res) => {
   res.sendStatus(200);
 });
 
-// Debug endpoint to list Puppeteer Chrome cache directory files
-app.get("/debug/chrome-path", (req, res) => {
-  const basePath = "/opt/render/.cache/puppeteer/chrome/linux-121.0.6167.85/";
-  fs.readdir(basePath, (err, files) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ basePath, files });
-  });
+//
+// ✅ NEW: Playwright-based debug endpoints
+//
+
+app.get("/debug/playwright-version", async (req, res) => {
+  try {
+    const version = require("playwright/package.json").version;
+    res.json({ message: "Playwright version info", version });
+  } catch (err) {
+    res.status(500).json({ error: "Could not retrieve Playwright version", details: err.message });
+  }
 });
 
-// ✅ Fixed debug endpoint using puppeteer-core
-app.get("/debug/chrome-executable-path", async (req, res) => {
+app.get("/debug/playwright-launch", async (req, res) => {
   try {
-    const browserFetcher = createBrowserFetcher();
-    const localRevisions = await browserFetcher.localRevisions();
-    const executablePaths = localRevisions.map(
-      rev => browserFetcher.revisionInfo(rev).executablePath
-    );
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto("https://example.com", { waitUntil: "domcontentloaded", timeout: 10000 });
+
+    const title = await page.title();
+    await browser.close();
 
     res.json({
-      message: "Puppeteer installed revisions and executable paths",
-      localRevisions,
-      executablePaths
+      message: "Successfully launched Chromium with Playwright",
+      title,
+      success: true
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({
+      error: "Failed to launch Playwright Chromium",
+      message: err.message
+    });
   }
 });
 
-// ✅ Updated executable path endpoint using chrome-aws-lambda
-app.get("/debug/puppeteer-executable", async (req, res) => {
-  try {
-    const executablePath = await chromium.executablePath;
-    res.json({ executablePath });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+app.get("/debug/tmpdir", (req, res) => {
+  const tmpDir = os.tmpdir();
+  res.json({
+    tmpDir,
+    contents: fs.readdirSync(tmpDir)
+  });
 });
 
 app.listen(port, () => {
