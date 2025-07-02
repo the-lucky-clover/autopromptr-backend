@@ -117,4 +117,92 @@ export async function processBatch(
           });
           break;
         } else {
-          logger.warn(`[BatchProcessor] ❌ automateForm failed on attempt ${attempt +
+          logger.warn(`[BatchProcessor] ❌ automateForm failed on attempt ${attempt + 1}: ${automationResult.error}`, {
+            batchId,
+            platform,
+            ip,
+          });
+        }
+      } catch (error) {
+        logger.error(`[BatchProcessor] ❌ Exception during automateForm on attempt ${attempt + 1}: ${(error as Error).message}`, {
+          batchId,
+          platform,
+          ip,
+        });
+      }
+
+      attempt++;
+      if (attempt < maxRetries) {
+        logger.info(`[BatchProcessor] Retrying in ${retryDelay}ms...`, {
+          batchId,
+          platform,
+          ip,
+        });
+        await page.waitForTimeout(retryDelay);
+      }
+    }
+
+    let screenshot: string | null = null;
+    try {
+      logger.info("[BatchProcessor] Taking screenshot...", {
+        batchId,
+        platform,
+        ip,
+      });
+      screenshot = await page.screenshot({
+        type: "png",
+        fullPage: true,
+        encoding: "base64",
+      });
+      logger.info("[BatchProcessor] Screenshot taken.", {
+        batchId,
+        platform,
+        ip,
+      });
+    } catch (screenshotError) {
+      logger.error(`[BatchProcessor] Error taking screenshot: ${(screenshotError as Error).message}`, {
+        batchId,
+        platform,
+        ip,
+      });
+    }
+
+    logger.info(`[BatchProcessor] Batch ${batchId} processing completed.`, {
+      batchId,
+      platform,
+      ip,
+    });
+
+    return {
+      batchId,
+      status: automationResult?.success ? "completed" : "failed",
+      result: automationResult,
+      screenshot,
+      processedAt: new Date().toISOString(),
+      platform,
+    };
+  } catch (error) {
+    logger.error(`[BatchProcessor] ❌ Batch processing failed for batch ${batchId}: ${(error as Error).message}`, {
+      batchId,
+      platform,
+      ip,
+    });
+
+    return {
+      batchId,
+      status: "failed",
+      error: (error as Error).message,
+      processedAt: new Date().toISOString(),
+      platform,
+    };
+  } finally {
+    if (browser) {
+      logger.info("[BatchProcessor] Closing browser...", {
+        batchId,
+        platform,
+        ip,
+      });
+      await browser.close();
+    }
+  }
+}
