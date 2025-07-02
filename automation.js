@@ -1,12 +1,29 @@
 import logger from "./logger.js";
 
+// Helper to retry async fn with delay and max attempts
+async function retryAction(fn, maxRetries = 3, retryDelay = 500) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxRetries) throw err;
+      logger.warn(`[Automation] Retry attempt ${attempt} failed: ${err.message}. Retrying in ${retryDelay}ms...`);
+      await new Promise(res => setTimeout(res, retryDelay));
+    }
+  }
+}
+
 const automateForm = async (page, prompt, settings = {}) => {
   const {
     waitForIdle = true,
     elementTimeout = 5000,
     debugLevel = "standard",
     customInputSelectors = [],
-    customSubmitSelectors = []
+    customSubmitSelectors = [],
+    maxRetries = 3,
+    retryDelay = 500
   } = settings;
 
   console.log(`[Automation] 🤖 Starting form automation for prompt: "${prompt}"`);
@@ -93,22 +110,33 @@ const automateForm = async (page, prompt, settings = {}) => {
 
     logger.info(`[Automation] Interacting with input: ${foundSelector}`);
 
-    try {
-      await targetElement.click({ timeout: elementTimeout });
+    // Retry clicking and focusing
+    await retryAction(async () => {
+      try {
+        await targetElement.click({ timeout: elementTimeout });
+      } catch {
+        // fallback forced focus via evaluate if click fails
+        await page.evaluate(el => el.focus(), targetElement);
+      }
       await targetElement.focus();
-    } catch (e) {
-      logger.warn(`[Automation] Element interaction failed, retrying forcibly: ${e.message}`);
-      await page.evaluate(el => el.focus(), targetElement);
-    }
+    }, maxRetries, retryDelay);
 
-    try {
-      await targetElement.fill("");
-      logger.info("[Automation] Cleared field with .fill()");
-    } catch (e) {
-      logger.warn(`[Automation] Could not clear field: ${e.message}`);
-    }
+    // Retry clearing input field
+    await retryAction(async () => {
+      try {
+        await targetElement.fill("");
+        logger.info("[Automation] Cleared field with .fill()");
+      } catch {
+        // fallback: type empty string with selectText + Delete if available (optional)
+        throw new Error("Clearing field failed");
+      }
+    }, maxRetries, retryDelay).catch(() => {
+      logger.warn("[Automation] Could not clear field after retries, proceeding with typing...");
+    });
 
-    await targetElement.type(prompt, { delay: 50 });
+    // Retry typing prompt
+    await retryAction(() => targetElement.type(prompt, { delay: 50 }), maxRetries, retryDelay);
+
     logger.info(`[Automation] ✅ Prompt entered into ${foundSelector}`);
 
     const defaultSubmitSelectors = [
@@ -142,23 +170,11 @@ const automateForm = async (page, prompt, settings = {}) => {
     }
 
     if (submitButton) {
-      try {
-        await submitButton.click();
-        logger.info(`[Automation] 📤 Form submitted via button: ${foundSubmitSelector}`);
-      } catch (e) {
-        const msg = `SUBMIT_BUTTON_CLICK_FAILED: Could not click submit button (${foundSubmitSelector}): ${e.message}`;
-        logger.error(`[Automation] ❌ ${msg}`);
-        throw new Error(msg);
-      }
+      await retryAction(() => submitButton.click(), maxRetries, retryDelay);
+      logger.info(`[Automation] 📤 Form submitted via button: ${foundSubmitSelector}`);
     } else {
-      try {
-        await page.keyboard.press("Enter");
-        logger.info("[Automation] 📤 Form submitted via Enter key.");
-      } catch (e) {
-        const msg = `ENTER_KEY_SUBMIT_FAILED: Could not submit form via Enter key: ${e.message}`;
-        logger.error(`[Automation] ❌ ${msg}`);
-        throw new Error(msg);
-      }
+      await retryAction(() => page.keyboard.press("Enter"), maxRetries, retryDelay);
+      logger.info("[Automation] 📤 Form submitted via Enter key.");
     }
 
     await page.waitForTimeout(1000);
