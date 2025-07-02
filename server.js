@@ -53,25 +53,41 @@ app.get("/test", (req, res) => {
 
 app.post("/api/run-batch", async (req, res) => {
   try {
-    logger.info("Received batch request");
     const { batch, platform, wait_for_idle, max_retries } = req.body;
 
     if (!batch || !batch.prompt) {
-      logger.warn("Missing required fields in batch");
+      logger.warn("Missing required fields in batch", {
+        ip: req.ip
+      });
       return res.status(400).json({
         error: "Missing required fields: batch.prompt is required",
         received: req.body
       });
     }
 
+    logger.info("Batch request received", {
+      batchId: batch.id,
+      platform,
+      ip: req.ip
+    });
+
     const result = await processBatch(batch, platform, {
       waitForIdle: wait_for_idle,
       maxRetries: max_retries
     });
 
+    logger.info("Batch processed successfully", {
+      batchId: batch.id,
+      platform,
+      ip: req.ip
+    });
+
     res.json(result);
   } catch (error) {
-    logger.error(`Batch processing error: ${error.message}`);
+    logger.error("Batch processing error", {
+      message: error.message,
+      ip: req.ip
+    });
     res.status(500).json({
       error: "Batch processing failed",
       message: error.message,
