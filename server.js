@@ -4,6 +4,7 @@ import cors from "cors";
 import fs from "fs";
 import path from "path";
 import puppeteer from "puppeteer";
+import { createBrowserFetcher } from "puppeteer-core"; // ✅ Fix
 import { processBatch } from "./batchProcessor.js";
 import logger from "./logger.js";
 
@@ -24,10 +25,7 @@ const lovableProjectRegex = /.*\.lovableproject\.com$/;
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like healthchecks, curl, Electron apps)
-    if (!origin) {
-      return callback(null, true);
-    }
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
       return callback(null, true);
     }
@@ -66,9 +64,7 @@ app.post("/api/run-batch", async (req, res) => {
     const { batch, platform, wait_for_idle, max_retries } = req.body;
 
     if (!batch || !batch.prompt) {
-      logger.warn("Missing required fields in batch", {
-        ip: req.ip
-      });
+      logger.warn("Missing required fields in batch", { ip: req.ip });
       return res.status(400).json({
         error: "Missing required fields: batch.prompt is required",
         received: req.body
@@ -128,10 +124,10 @@ app.get("/debug/chrome-path", (req, res) => {
   });
 });
 
-// Debug endpoint to list installed Puppeteer revisions and executable paths
+// ✅ Fixed debug endpoint using puppeteer-core
 app.get("/debug/chrome-executable-path", async (req, res) => {
   try {
-    const browserFetcher = puppeteer.createBrowserFetcher();
+    const browserFetcher = createBrowserFetcher();
     const localRevisions = await browserFetcher.localRevisions();
     const executablePaths = localRevisions.map(
       rev => browserFetcher.revisionInfo(rev).executablePath
