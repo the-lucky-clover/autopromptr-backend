@@ -1,8 +1,10 @@
-const express = require("express");
-const cors = require("cors");
+import express from "express";
+import cors from "cors";
+import { processBatch } from "./batchProcessor.js"; // Import processBatch
+import puppeteer from "puppeteer";
+
 const app = express();
 const port = process.env.PORT || 3000;
-const { processBatch } = require("./batchProcessor"); // Import processBatch
 
 // Allowed frontend origins - combining both static domains and patterns
 const allowedOrigins = [
@@ -115,11 +117,7 @@ app.options("*", (req, res) => {
   res.sendStatus(200);
 });
 
-app.listen(port, () => {
-  console.log(`AutoPromptr backend listening on port ${port}`);
-});
-
-
+// Initialize Puppeteer browser
 const browser = await puppeteer.launch({
   headless: true,
   args: [
@@ -133,4 +131,8 @@ const browser = await puppeteer.launch({
     '--disable-gpu'
   ],
   executablePath: process.env.CHROME_BIN || '/usr/bin/google-chrome'
+});
+
+app.listen(port, () => {
+  console.log(`AutoPromptr backend listening on port ${port}`);
 });
