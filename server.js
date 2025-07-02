@@ -7,46 +7,32 @@ import logger from "./logger.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Allowed static origins
 const allowedOrigins = [
-  "https://bolt-diy-34-1751466323377.vercel.app", // Vercel domain
+  "https://bolt-diy-34-1751466323377.vercel.app", // Your Vercel domain
   "https://autopromptr.com",
   "https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app",
   "https://lovable.dev",
   "http://localhost:3000",
-  "http://localhost:5173"
+  "http://localhost:5173",
+  "https://k03e2io1v3fx9wvj0vr8qd5q58o56n-fkdo--8080--6e337437.local-credentialless.webcontainer-api.io"
 ];
 
-// Allowed dynamic origin patterns
 const lovableProjectRegex = /.*\.lovableproject\.com$/;
-const vercelPreviewRegex = /^https:\/\/.+--.+\.vercel\.app$/;
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow requests with no origin (like healthchecks, curl, Electron apps)
     if (!origin) {
-      // Allow Electron, health checks, curl, etc.
       return callback(null, true);
     }
-
-    if (
-      allowedOrigins.includes(origin) ||
-      lovableProjectRegex.test(origin) ||
-      vercelPreviewRegex.test(origin)
-    ) {
+    if (allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
       return callback(null, true);
     }
-
     console.error(`Blocked by CORS: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-    "Origin"
-  ],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   credentials: true,
   optionsSuccessStatus: 200
 };
