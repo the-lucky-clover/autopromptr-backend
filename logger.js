@@ -1,4 +1,5 @@
 import winston from "winston";
+import Transport from "winston-transport";
 import { createClient } from "@supabase/supabase-js";
 
 // Initialize Supabase client
@@ -7,11 +8,18 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// Supabase Winston transport
-const supabaseTransport = () => ({
-  log: async (info, callback) => {
+// Custom Winston transport for Supabase
+class SupabaseTransport extends Transport {
+  constructor(opts) {
+    super(opts);
+  }
+
+  async log(info, callback) {
+    setImmediate(() => {
+      this.emit("logged", info);
+    });
+
     try {
-      // Destructure extra fields if present
       const { batchId, platform, ip } = info;
 
       await supabase.from("logs").insert({
@@ -26,9 +34,10 @@ const supabaseTransport = () => ({
     } catch (err) {
       console.error("❌ Failed to log to Supabase:", err.message);
     }
+
     callback();
   }
-});
+}
 
 const logger = winston.createLogger({
   level: "info",
@@ -43,7 +52,7 @@ const logger = winston.createLogger({
     new winston.transports.Console(),
     new winston.transports.File({ filename: "logs/error.log", level: "error" }),
     new winston.transports.File({ filename: "logs/combined.log" }),
-    supabaseTransport() // pushes logs to Supabase
+    new SupabaseTransport()
   ]
 });
 
