@@ -1,21 +1,63 @@
 import logger from "./logger.js";
+import type { Page, ElementHandle } from "playwright";
+
+interface AutomationSettings {
+  waitForIdle?: boolean;
+  elementTimeout?: number;
+  debugLevel?: "standard" | "verbose";
+  customInputSelectors?: string[];
+  customSubmitSelectors?: string[];
+  maxRetries?: number;
+  retryDelay?: number;
+}
+
+interface AutomationSuccess {
+  success: true;
+  action: "form_submitted";
+  prompt: string;
+  method: "button_click" | "enter_key";
+  timestamp: string;
+  details: string;
+}
+
+interface AutomationFailure {
+  success: false;
+  error: string;
+  prompt: string;
+  timestamp: string;
+  code: string;
+}
+
+type AutomationResult = AutomationSuccess | AutomationFailure;
 
 // Helper to retry async fn with delay and max attempts
-async function retryAction(fn, maxRetries = 3, retryDelay = 500) {
+async function retryAction<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  retryDelay = 500
+): Promise<T> {
   let attempt = 0;
   while (attempt < maxRetries) {
     try {
       return await fn();
-    } catch (err) {
+    } catch (err: any) {
       attempt++;
       if (attempt >= maxRetries) throw err;
-      logger.warn(`[Automation] Retry attempt ${attempt} failed: ${err.message}. Retrying in ${retryDelay}ms...`);
-      await new Promise(res => setTimeout(res, retryDelay));
+      logger.warn(
+        `[Automation] Retry attempt ${attempt} failed: ${err.message}. Retrying in ${retryDelay}ms...`
+      );
+      await new Promise((res) => setTimeout(res, retryDelay));
     }
   }
+  // Should never reach here
+  throw new Error("retryAction: Max retries exceeded");
 }
 
-const automateForm = async (page, prompt, settings = {}) => {
+const automateForm = async (
+  page: Page,
+  prompt: string,
+  settings: AutomationSettings = {}
+): Promise<AutomationResult> => {
   const {
     waitForIdle = true,
     elementTimeout = 5000,
@@ -23,7 +65,7 @@ const automateForm = async (page, prompt, settings = {}) => {
     customInputSelectors = [],
     customSubmitSelectors = [],
     maxRetries = 3,
-    retryDelay = 500
+    retryDelay = 500,
   } = settings;
 
   console.log(`[Automation] 🤖 Starting form automation for prompt: "${prompt}"`);
@@ -45,11 +87,11 @@ const automateForm = async (page, prompt, settings = {}) => {
       'input[type="search"]',
       'input:not([type="hidden"]):not([type="submit"]):not([type="button"])',
       'textarea',
-      '[contenteditable="true"]'
+      '[contenteditable="true"]',
     ];
     const inputSelectors = [...customInputSelectors, ...defaultInputSelectors];
 
-    let targetElement = null;
+    let targetElement: ElementHandle<HTMLElement> | null = null;
     let foundSelector = "";
 
     console.log("[Automation] Searching for target input element...");
@@ -58,8 +100,8 @@ const automateForm = async (page, prompt, settings = {}) => {
       try {
         const elements = await page.$$(selector);
         for (const element of elements) {
-          if (await element.isVisible() && await element.isEnabled()) {
-            targetElement = element;
+          if ((await element.isVisible()) && (await element.isEnabled())) {
+            targetElement = element as ElementHandle<HTMLElement>;
             foundSelector = selector;
             console.log(`[Automation] 🎯 Found target element with selector: ${selector}`);
             logger.info(`[Automation] 🎯 Found target element with selector: ${selector}`);
@@ -67,7 +109,7 @@ const automateForm = async (page, prompt, settings = {}) => {
           }
         }
         if (targetElement) break;
-      } catch (e) {
+      } catch (e: any) {
         if (debugLevel === "verbose") {
           logger.warn(`[Automation] Selector ${selector} failed: ${e.message}`);
         }
@@ -77,24 +119,18 @@ const automateForm = async (page, prompt, settings = {}) => {
     if (!targetElement) {
       console.log("[Automation] No direct input element found, searching for focusable elements...");
       logger.info("[Automation] No direct input element found, searching for focusable elements...");
-      const fallbackSelectors = [
-        "button",
-        "input",
-        "textarea",
-        "select",
-        '[tabindex]:not([tabindex="-1"])'
-      ];
+      const fallbackSelectors = ["button", "input", "textarea", "select", '[tabindex]:not([tabindex="-1"])'];
       for (const selector of fallbackSelectors) {
         try {
           const element = await page.$(selector);
-          if (element && await element.isVisible()) {
-            targetElement = element;
+          if (element && (await element.isVisible())) {
+            targetElement = element as ElementHandle<HTMLElement>;
             foundSelector = selector;
             console.log(`[Automation] 🎯 Found fallback element: ${selector}`);
             logger.info(`[Automation] 🎯 Found fallback element: ${selector}`);
             break;
           }
-        } catch (e) {
+        } catch (e: any) {
           if (debugLevel === "verbose") {
             logger.warn(`[Automation] Fallback selector ${selector} failed: ${e.message}`);
           }
@@ -113,21 +149,20 @@ const automateForm = async (page, prompt, settings = {}) => {
     // Retry clicking and focusing
     await retryAction(async () => {
       try {
-        await targetElement.click({ timeout: elementTimeout });
+        await targetElement!.click({ timeout: elementTimeout });
       } catch {
         // fallback forced focus via evaluate if click fails
-        await page.evaluate(el => el.focus(), targetElement);
+        await page.evaluate((el) => el.focus(), targetElement);
       }
-      await targetElement.focus();
+      await targetElement!.focus();
     }, maxRetries, retryDelay);
 
     // Retry clearing input field
     await retryAction(async () => {
       try {
-        await targetElement.fill("");
+        await targetElement!.fill("");
         logger.info("[Automation] Cleared field with .fill()");
       } catch {
-        // fallback: type empty string with selectText + Delete if available (optional)
         throw new Error("Clearing field failed");
       }
     }, maxRetries, retryDelay).catch(() => {
@@ -135,7 +170,7 @@ const automateForm = async (page, prompt, settings = {}) => {
     });
 
     // Retry typing prompt
-    await retryAction(() => targetElement.type(prompt, { delay: 50 }), maxRetries, retryDelay);
+    await retryAction(() => targetElement!.type(prompt, { delay: 50 }), maxRetries, retryDelay);
 
     logger.info(`[Automation] ✅ Prompt entered into ${foundSelector}`);
 
@@ -146,23 +181,23 @@ const automateForm = async (page, prompt, settings = {}) => {
       'button:has-text("Submit")',
       'button:has-text("Search")',
       '[data-testid*="send"]',
-      '[aria-label*="send"]'
+      '[aria-label*="send"]',
     ];
     const submitSelectors = [...customSubmitSelectors, ...defaultSubmitSelectors];
 
-    let submitButton = null;
+    let submitButton: ElementHandle<HTMLElement> | null = null;
     let foundSubmitSelector = "";
 
     for (const selector of submitSelectors) {
       try {
         const button = await page.$(selector);
-        if (button && await button.isVisible() && await button.isEnabled()) {
-          submitButton = button;
+        if (button && (await button.isVisible()) && (await button.isEnabled())) {
+          submitButton = button as ElementHandle<HTMLElement>;
           foundSubmitSelector = selector;
           logger.info(`[Automation] 🔘 Found submit button: ${selector}`);
           break;
         }
-      } catch (e) {
+      } catch (e: any) {
         if (debugLevel === "verbose") {
           logger.warn(`[Automation] Submit selector ${selector} failed: ${e.message}`);
         }
@@ -170,7 +205,7 @@ const automateForm = async (page, prompt, settings = {}) => {
     }
 
     if (submitButton) {
-      await retryAction(() => submitButton.click(), maxRetries, retryDelay);
+      await retryAction(() => submitButton!.click(), maxRetries, retryDelay);
       logger.info(`[Automation] 📤 Form submitted via button: ${foundSubmitSelector}`);
     } else {
       await retryAction(() => page.keyboard.press("Enter"), maxRetries, retryDelay);
@@ -178,24 +213,24 @@ const automateForm = async (page, prompt, settings = {}) => {
     }
 
     await page.waitForTimeout(1000);
+
     return {
       success: true,
       action: "form_submitted",
       prompt,
       method: submitButton ? "button_click" : "enter_key",
       timestamp: new Date().toISOString(),
-      details: `Prompt submitted using ${submitButton ? "submit button" : "Enter key"}.`
+      details: `Prompt submitted using ${submitButton ? "submit button" : "Enter key"}.`,
     };
-
-  } catch (error) {
-    const code = error.message.split(":")[0] || "UNKNOWN_ERROR";
+  } catch (error: any) {
+    const code = (error.message?.split(":")[0]) || "UNKNOWN_ERROR";
     logger.error(`[Automation] ❌ Automation failed: ${error.message}`);
     return {
       success: false,
       error: error.message,
       prompt,
       timestamp: new Date().toISOString(),
-      code
+      code,
     };
   }
 };
