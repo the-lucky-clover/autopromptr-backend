@@ -1,6 +1,8 @@
 // server.js
 import express from "express";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
 import { processBatch } from "./batchProcessor.js";
 import logger from "./logger.js";
 
@@ -114,6 +116,15 @@ app.get("/", (req, res) => {
 
 app.options("*", (req, res) => {
   res.sendStatus(200);
+});
+
+// Debug endpoint to list Puppeteer Chrome cache directory files
+app.get("/debug/chrome-path", (req, res) => {
+  const basePath = "/opt/render/.cache/puppeteer/chrome/linux-121.0.6167.85/";
+  fs.readdir(basePath, (err, files) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json({ basePath, files });
+  });
 });
 
 app.listen(port, () => {
