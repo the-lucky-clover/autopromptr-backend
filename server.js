@@ -3,8 +3,8 @@ import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
-import puppeteer from "puppeteer";
-import { createBrowserFetcher } from "puppeteer-core"; // ✅ Fix
+import { createBrowserFetcher } from "puppeteer-core";
+import chromium from "chrome-aws-lambda";
 import { processBatch } from "./batchProcessor.js";
 import logger from "./logger.js";
 
@@ -143,10 +143,10 @@ app.get("/debug/chrome-executable-path", async (req, res) => {
   }
 });
 
-// Debug endpoint to get Puppeteer's runtime executable path
+// ✅ Updated executable path endpoint using chrome-aws-lambda
 app.get("/debug/puppeteer-executable", async (req, res) => {
   try {
-    const executablePath = puppeteer.executablePath();
+    const executablePath = await chromium.executablePath;
     res.json({ executablePath });
   } catch (err) {
     res.status(500).json({ error: err.message });
