@@ -14,7 +14,8 @@ export async function processBatch(batch, platform, options = {}) {
 
   const {
     waitForIdle = true,
-    maxRetries = 3
+    maxRetries = 3,
+    retryDelay = 1000
   } = options;
 
   let browser;
@@ -27,7 +28,7 @@ export async function processBatch(batch, platform, options = {}) {
 
     browser = await chromium.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const context = await browser.newContext();
@@ -39,6 +40,7 @@ export async function processBatch(batch, platform, options = {}) {
         platform,
         ip
       });
+
       await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
 
       if (waitForIdle) {
@@ -47,6 +49,7 @@ export async function processBatch(batch, platform, options = {}) {
           platform,
           ip
         });
+
         try {
           await page.waitForLoadState("networkidle", { timeout: 15000 });
         } catch (e) {
@@ -59,12 +62,51 @@ export async function processBatch(batch, platform, options = {}) {
       }
     }
 
-    logger.info(`[BatchProcessor] Calling automateForm for prompt: ${batch.prompt?.substring(0, 50)}...`, {
-      batchId,
-      platform,
-      ip
-    });
-    const automationResult = await automateForm(page, batch.prompt, options);
+    let automationResult = null;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        logger.info(`[BatchProcessor] Attempt ${attempt + 1} to run automateForm...`, {
+          batchId,
+          platform,
+          ip
+        });
+
+        automationResult = await automateForm(page, batch.prompt, options);
+
+        if (automationResult.success) {
+          logger.info(`[BatchProcessor] ✅ automateForm succeeded on attempt ${attempt + 1}.`, {
+            batchId,
+            platform,
+            ip
+          });
+          break;
+        } else {
+          logger.warn(`[BatchProcessor] ❌ automateForm failed on attempt ${attempt + 1}: ${automationResult.error}`, {
+            batchId,
+            platform,
+            ip
+          });
+        }
+      } catch (error) {
+        logger.error(`[BatchProcessor] ❌ Exception during automateForm on attempt ${attempt + 1}: ${error.message}`, {
+          batchId,
+          platform,
+          ip
+        });
+      }
+
+      attempt++;
+      if (attempt < maxRetries) {
+        logger.info(`[BatchProcessor] Retrying in ${retryDelay}ms...`, {
+          batchId,
+          platform,
+          ip
+        });
+        await page.waitForTimeout(retryDelay);
+      }
+    }
 
     let screenshot = null;
     try {
@@ -99,7 +141,7 @@ export async function processBatch(batch, platform, options = {}) {
 
     return {
       batchId,
-      status: automationResult.success ? "completed" : "failed",
+      status: automationResult?.success ? "completed" : "failed",
       result: automationResult,
       screenshot,
       processedAt: new Date().toISOString(),
@@ -112,6 +154,7 @@ export async function processBatch(batch, platform, options = {}) {
       platform,
       ip
     });
+
     return {
       batchId,
       status: "failed",
