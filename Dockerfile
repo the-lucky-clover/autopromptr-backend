@@ -1,28 +1,28 @@
-# Use official Playwright image with Node and browser dependencies
+# Use official Playwright image with Node.js and all browser/system dependencies pre-installed
 FROM mcr.microsoft.com/playwright:focal
 
-# Set working directory
+# Set working directory inside the container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (or yarn.lock) first for better caching
+# Copy dependency files first for layer caching
 COPY package*.json ./
 
-# Install npm dependencies
+# Install Node.js dependencies
 RUN npm install
 
-# Install Playwright browsers explicitly
+# Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
 
-# Copy the rest of the app source code
-COPY index.ts ./ 
+# Copy the application source code
+COPY index.ts ./
 COPY src/ ./src/
 COPY tsconfig.json ./
 
-# Build your TypeScript app
+# Build the TypeScript code
 RUN npm run build
 
-# Expose the app port
+# Expose the app's port
 EXPOSE 3000
 
-# Run the app
+# Start the compiled app
 CMD ["npm", "start"]
