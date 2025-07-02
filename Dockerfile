@@ -10,7 +10,7 @@ WORKDIR /app
 # Copy dependency files first for better layer caching
 COPY package*.json ./
 
-# Install Node.js dependencies
+# Install Node.js dependencies (including devDependencies for build tools)
 RUN npm install
 
 # Install Playwright browsers with system dependencies
@@ -19,7 +19,7 @@ RUN npx playwright install --with-deps
 # Copy the application source code (everything in root)
 COPY . .
 
-# Build the TypeScript code
+# Build the TypeScript code explicitly
 RUN npm run build
 
 # Expose the app's port
