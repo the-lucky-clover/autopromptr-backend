@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { chromium } from 'playwright';
-import { processBatch, Batch } from './batchProcessor.js';
+import { processBatch, Batch } from './batchProcessor.ts';
 import logger from './logger.js';
 
 const app = express();
