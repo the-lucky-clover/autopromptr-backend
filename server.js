@@ -17,20 +17,25 @@ const allowedOrigins = [
 
 const lovableProjectRegex = /.*\.lovableproject\.com$/;
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
+    // Allow requests with no origin (like healthchecks, curl, Electron apps)
+    if (!origin) {
+      return callback(null, true);
+    }
     if (allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
       return callback(null, true);
     }
+    console.error(`Blocked by CORS: ${origin}`);
     return callback(new Error("Not allowed by CORS"));
   },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   credentials: true,
   optionsSuccessStatus: 200
-}));
+};
 
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -74,7 +79,7 @@ app.post("/api/run-batch", async (req, res) => {
     const result = await processBatch(batch, platform, {
       waitForIdle: wait_for_idle,
       maxRetries: max_retries,
-      ip: req.ip  // <-- pass ip here
+      ip: req.ip
     });
 
     logger.info("Batch processed successfully", {
