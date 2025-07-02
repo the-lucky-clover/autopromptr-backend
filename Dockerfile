@@ -19,6 +19,9 @@ RUN npm install typescript --save-dev
 # Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
 
+# Install TypeScript globally (so it's available for the build step)
+RUN npm install -g typescript
+
 # Copy the application source code (everything in root)
 COPY . .
 
