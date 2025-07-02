@@ -1,5 +1,6 @@
 // batchProcessor.js
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "chrome-aws-lambda";
 import { automateForm } from "./automation.js";
 import logger from "./logger.js";
 
@@ -25,10 +26,15 @@ export async function processBatch(batch, platform, options = {}) {
       platform,
       ip
     });
+
+    const executablePath = await chromium.executablePath || process.env.CHROME_PATH || "/usr/bin/google-chrome";
+
     browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: process.env.CHROME_PATH || undefined,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true
     });
 
     const page = await browser.newPage();
@@ -47,8 +53,10 @@ export async function processBatch(batch, platform, options = {}) {
           platform,
           ip
         });
-        // Puppeteer does not have page.waitForLoadState, use waitUntil: 'networkidle0' or 'networkidle2'
-        await page.goto(batch.targetUrl, { waitUntil: "networkidle2", timeout: 15000 }).catch(e => {
+        await page.goto(batch.targetUrl, {
+          waitUntil: "networkidle2",
+          timeout: 15000
+        }).catch(e => {
           logger.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${e.message}`, {
             batchId,
             platform,
