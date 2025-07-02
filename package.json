@@ -8,17 +8,21 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "postinstall": "npx puppeteer browsers install chrome",
+    "test": "jest --experimental-vm-modules",
     "lint": "eslint . --ext .js,.mjs",
     "audit:fix": "npm audit fix --force"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^21.0.0",
+    "winston": "^3.10.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
-    "eslint": "^8.57.0"
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -28,7 +32,9 @@
     "backend",
     "puppeteer",
     "express",
-    "automation"
+    "automation",
+    "logging",
+    "testing"
   ],
   "author": "The Lucky Clover",
   "license": "MIT"
