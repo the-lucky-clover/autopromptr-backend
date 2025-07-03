@@ -4,11 +4,11 @@ import path from 'path';
 
 interface LaunchOptions {
   url: string;
-  headful?: boolean;
+  headless?: boolean;
 }
 
-export async function launchBrowser({ url, headful = false }: LaunchOptions): Promise<{ title: string; screenshotPath: string }> {
-  const browser = await chromium.launch({ headless: !headful });
+export async function launchBrowser({ url, headless = false }: LaunchOptions): Promise {
+  const browser = await chromium.launch({ headless: !headless });
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -18,20 +18,22 @@ export async function launchBrowser({ url, headful = false }: LaunchOptions): Pr
     const title = await page.title();
 
     const screenshotBuffer = await page.screenshot({ fullPage: true });
-    const screenshotDir = path.resolve('screenshots');
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `screenshot-${timestamp}.png`;
-    const filepath = path.join(screenshotDir, filename);
 
-    if (!fs.existsSync(screenshotDir)) {
-      fs.mkdirSync(screenshotDir, { recursive: true });
+    // Save screenshot to a file
+    const screenshotPath = path.join(process.cwd(), 'screenshots', `screenshot-${Date.now()}.png`);
+    
+    // Ensure screenshots directory exists
+    const screenshotsDir = path.dirname(screenshotPath);
+    if (!fs.existsSync(screenshotsDir)) {
+      fs.mkdirSync(screenshotsDir, { recursive: true });
     }
-
-    fs.writeFileSync(filepath, screenshotBuffer);
+    
+    fs.writeFileSync(screenshotPath, screenshotBuffer);
 
     return {
       title,
-      screenshotPath: filepath
+      screenshotPath,
+      url
     };
   } finally {
     await browser.close();
