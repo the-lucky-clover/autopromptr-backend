@@ -1,4 +1,4 @@
-# Use official Playwright image with Node.js and all browser/system dependencies pre-installed
+# Use official Playwright image with Node.js and all browser/system dependencies
 FROM mcr.microsoft.com/playwright:focal
 
 # Set NODE_ENV to production for optimized installs
@@ -19,10 +19,10 @@ RUN npm install typescript --save-dev
 # Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
 
-# Install TypeScript globally (so it's available for the build step)
+# Install global TypeScript compiler
 RUN npm install -g typescript
 
-# Copy the application source code (everything in root)
+# Copy the rest of the application code
 COPY . .
 
 # Step 3: Run the build
@@ -31,5 +31,5 @@ RUN npm run build
 # Expose the app's port
 EXPOSE 3000
 
-# Start the compiled app
-CMD ["npm", "start"]
+# Start the application
+CMD ["node", "dist/index.js"]
