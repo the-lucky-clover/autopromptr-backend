@@ -214,6 +214,15 @@ const automateForm = async (
 
     await page.waitForTimeout(1000);
 
+    // Take screenshot and handle the binary data
+    const screenshot = await page.screenshot({ path: 'screenshot.png' });
+
+    // Handle binary data
+    const buffer = Buffer.from(screenshot);  // Assuming screenshot returns binary data
+    const result = buffer.toString('utf8');   // Convert binary data to string
+
+    console.log("[Automation] Screenshot taken and binary data processed.");
+
     return {
       success: true,
       action: "form_submitted",
