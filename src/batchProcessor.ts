@@ -1,7 +1,7 @@
 // batchProcessor.ts
 import { chromium, Browser, Page } from "playwright";
-import { automateForm } from "./automation.ts";
-import logger from "./logger.ts";
+import { automateForm } from "./automation.js";
+import logger from "./logger.js";
 
 export interface Batch {
   id?: string;
@@ -18,192 +18,52 @@ export interface ProcessOptions {
   retryDelay?: number;
 }
 
-export interface AutomationResult {
-  success: boolean;
-  error?: string;
-  [key: string]: any; // other fields automation may return
-}
-
-export interface ProcessResult {
-  batchId?: string;
-  status: "completed" | "failed";
-  result?: AutomationResult | null;
-  screenshot?: string | null;
-  processedAt: string;
-  platform: string;
-  error?: string;
-}
-
 export async function processBatch(
   batch: Batch,
-  platform: string,
-  options: ProcessOptions = {}
-): Promise<ProcessResult> {
-  const { batchId = batch.id, ip } = options;
+  options: ProcessOptions
+): Promise {
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+  let retries = 0;
 
-  logger.info(`[BatchProcessor] Processing batch ${batchId} for platform ${platform}`, {
-    batchId,
-    platform,
-    ip,
-  });
-
-  const {
-    waitForIdle = true,
-    maxRetries = 3,
-    retryDelay = 1000,
-  } = options;
-
-  let browser: Browser | undefined;
-  try {
-    logger.info("[BatchProcessor] Launching Playwright Chromium browser...", {
-      batchId,
-      platform,
-      ip,
-    });
-
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
-    const context = await browser.newContext();
-    const page: Page = await context.newPage();
-
-    if (batch.targetUrl) {
-      logger.info(`[BatchProcessor] Navigating to target URL: ${batch.targetUrl}`, {
-        batchId,
-        platform,
-        ip,
-      });
-
-      await page.goto(batch.targetUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
-
-      if (waitForIdle) {
-        logger.info("[BatchProcessor] Waiting for network idle on target URL...", {
-          batchId,
-          platform,
-          ip,
-        });
-
-        try {
-          await page.waitForLoadState("networkidle", { timeout: 15000 });
-        } catch (e) {
-          logger.warn(`[BatchProcessor] Network idle timeout for ${batch.targetUrl}: ${(e as Error).message}`, {
-            batchId,
-            platform,
-            ip,
-          });
-        }
-      }
-    }
-
-    let automationResult: AutomationResult | null = null;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
-      try {
-        logger.info(`[BatchProcessor] Attempt ${attempt + 1} to run automateForm...`, {
-          batchId,
-          platform,
-          ip,
-        });
-
-        automationResult = await automateForm(page, batch.prompt, options);
-
-        if (automationResult.success) {
-          logger.info(`[BatchProcessor] ✅ automateForm succeeded on attempt ${attempt + 1}.`, {
-            batchId,
-            platform,
-            ip,
-          });
-          break;
-        } else {
-          logger.warn(`[BatchProcessor] ❌ automateForm failed on attempt ${attempt + 1}: ${automationResult.error}`, {
-            batchId,
-            platform,
-            ip,
-          });
-        }
-      } catch (error) {
-        logger.error(`[BatchProcessor] ❌ Exception during automateForm on attempt ${attempt + 1}: ${(error as Error).message}`, {
-          batchId,
-          platform,
-          ip,
-        });
-      }
-
-      attempt++;
-      if (attempt < maxRetries) {
-        logger.info(`[BatchProcessor] Retrying in ${retryDelay}ms...`, {
-          batchId,
-          platform,
-          ip,
-        });
-        await page.waitForTimeout(retryDelay);
-      }
-    }
-
-    let screenshot: string | null = null;
+  while (retries <= (options.maxRetries || 0)) {
     try {
-      logger.info("[BatchProcessor] Taking screenshot...", {
-        batchId,
-        platform,
-        ip,
-      });
-      screenshot = await page.screenshot({
-        type: "png",
-        fullPage: true,
-        encoding: "base64",
-      });
-      logger.info("[BatchProcessor] Screenshot taken.", {
-        batchId,
-        platform,
-        ip,
-      });
-    } catch (screenshotError) {
-      logger.error(`[BatchProcessor] Error taking screenshot: ${(screenshotError as Error).message}`, {
-        batchId,
-        platform,
-        ip,
-      });
-    }
+      logger.info(`Processing batch ${batch.id} for URL: ${batch.targetUrl}`);
 
-    logger.info(`[BatchProcessor] Batch ${batchId} processing completed.`, {
-      batchId,
-      platform,
-      ip,
-    });
+      browser = await chromium.launch({ headless: true });
+      page = await browser.newPage();
 
-    return {
-      batchId,
-      status: automationResult?.success ? "completed" : "failed",
-      result: automationResult,
-      screenshot,
-      processedAt: new Date().toISOString(),
-      platform,
-    };
-  } catch (error) {
-    logger.error(`[BatchProcessor] ❌ Batch processing failed for batch ${batchId}: ${(error as Error).message}`, {
-      batchId,
-      platform,
-      ip,
-    });
+      await page.goto(batch.targetUrl || "");
 
-    return {
-      batchId,
-      status: "failed",
-      error: (error as Error).message,
-      processedAt: new Date().toISOString(),
-      platform,
-    };
-  } finally {
-    if (browser) {
-      logger.info("[BatchProcessor] Closing browser...", {
-        batchId,
-        platform,
-        ip,
-      });
-      await browser.close();
+      // Example: Automate a form on the page
+      await automateForm(page, batch.prompt);
+
+      // Take a screenshot and return it as a base64 string
+      const screenshotBuffer = await page.screenshot({ type: "jpeg" }); // Specify type as jpeg or png
+      const screenshotBase64 = screenshotBuffer.toString("base64");
+
+      logger.info(`Batch ${batch.id} processed successfully.`);
+      return { success: true, screenshot: screenshotBase64 };
+    } catch (error: any) {
+      logger.error(`Error processing batch ${batch.id}: ${error.message}`);
+      retries++;
+      if (retries <= (options.maxRetries || 0)) {
+        logger.warn(
+          `Retrying batch ${batch.id} in ${options.retryDelay || 1000}ms...`
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.retryDelay || 1000)
+        );
+      } else {
+        return { success: false, error: error.message };
+      }
+    } finally {
+      if (page) {
+        await page.close();
+      }
+      if (browser) {
+        await browser.close();
+      }
     }
   }
 }
