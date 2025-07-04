@@ -1,24 +1,26 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "Node",
-    "outDir": "dist",
-    "rootDir": "src",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    "sourceMap": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": false
+    "target": "es2020", // Or a more recent target like "es2022" or "esnext"
+    "module": "commonjs", // Or "esnext" if you're using ES Modules throughout
+    "lib": ["es2020", "dom"], // Add "dom" if you're using browser-like APIs (e.g., Playwright)
+    "outDir": "./dist", // Output directory for compiled JavaScript
+    "rootDir": "./src", // Root directory of your TypeScript source files
+    "strict": true, // Enable all strict type-checking options
+    "esModuleInterop": true, // Allows default imports from modules with no default export
+    "skipLibCheck": true, // Skip type checking of all declaration files (*.d.ts)
+    "forceConsistentCasingInFileNames": true, // Ensure that casing of file names is consistent
+    "resolveJsonModule": true, // Include modules imported with '.json' extension
+    "allowImportingTsExtensions": true, // Crucial for your TS5097 errors
+    "noEmitOnError": false, // Set to true for production builds, false for debugging
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/types" // If you have custom type definitions
+    ]
   },
   "include": [
-    "src/**/*.ts"
+    "src/**/*.ts" // Include all .ts files in the src directory
   ],
   "exclude": [
-    "node_modules",
-    "dist"
+    "node_modules" // Exclude node_modules
   ]
 }
