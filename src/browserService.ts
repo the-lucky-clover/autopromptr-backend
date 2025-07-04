@@ -7,7 +7,7 @@ interface LaunchOptions {
   headless?: boolean;
 }
 
-export async function launchBrowser({ url, headless = false }: LaunchOptions): Promise {
+export async function launchBrowser({ url, headless = false }: LaunchOptions): Promise<{ title: string; screenshotPath: string; url: string }> {
   const browser = await chromium.launch({ headless: !headless });
   const context = await browser.newContext();
   const page = await context.newPage();
