@@ -1,172 +1,69 @@
-import logger from "./logger.js";
-import type { Page, ElementHandle } from "playwright";
+// batchProcessor.ts
+import { chromium, Browser, Page } from "playwright";
+import { automateForm } from "./automation.ts";
+import logger from "./logger.ts";
 
-interface AutomationSettings {
+export interface Batch {
+  id?: string;
+  targetUrl?: string;
+  prompt: string;
+  [key: string]: any; // for additional batch fields
+}
+
+export interface ProcessOptions {
+  batchId?: string;
+  ip?: string;
   waitForIdle?: boolean;
-  elementTimeout?: number;
-  debugLevel?: "standard" | "verbose";
-  customInputSelectors?: string[];
-  customSubmitSelectors?: string[];
   maxRetries?: number;
   retryDelay?: number;
 }
 
-interface AutomationSuccess {
-  success: true;
-  action: "form_submitted";
-  prompt: string;
-  method: "button_click" | "enter_key";
-  timestamp: string;
-  details: string;
-}
-
-interface AutomationError {
-  success: false;
-  error: string;
-  timestamp: string;
-  details?: string;
-}
-
-type AutomationResult = AutomationSuccess | AutomationError;
-
-export async function automateForm(
-  page: Page,
-  prompt: string,
-  settings: AutomationSettings = {}
+export async function processBatch(
+  batch: Batch,
+  options: ProcessOptions
 ): Promise {
-  const {
-    waitForIdle = true,
-    elementTimeout = 5000,
-    debugLevel = "standard",
-    customInputSelectors = [],
-    customSubmitSelectors = [],
-    maxRetries = 3,
-    retryDelay = 1000,
-  } = settings;
+  let browser: Browser | null = null;
+  let page: Page | null = null;
+  let retries = 0;
 
-  const timestamp = new Date().toISOString();
-
-  try {
-    logger.info(`Starting form automation with prompt: "${prompt}"`);
-
-    // Wait for page to be idle if requested
-    if (waitForIdle) {
-      await page.waitForLoadState("networkidle", { timeout: 10000 });
-    }
-
-    // Define common input selectors
-    const inputSelectors = [
-      'input[type="text"]',
-      'input[type="search"]',
-      'input[placeholder*="search"]',
-      'input[placeholder*="query"]',
-      'input[placeholder*="prompt"]',
-      'textarea',
-      '[contenteditable="true"]',
-      ...customInputSelectors,
-    ];
-
-    // Find the first available input field
-    let inputElement: ElementHandle | null = null;
-    for (const selector of inputSelectors) {
-      try {
-        inputElement = await page.waitForSelector(selector, {
-          timeout: elementTimeout,
-          state: "visible",
-        });
-        if (inputElement) {
-          logger.info(`Found input element with selector: ${selector}`);
-          break;
-        }
-      } catch (error) {
-        if (debugLevel === "verbose") {
-          logger.debug(`Selector ${selector} not found or not visible`);
-        }
-      }
-    }
-
-    if (!inputElement) {
-      throw new Error("No suitable input field found on the page");
-    }
-
-    // Clear and fill the input field
-    await inputElement.click();
-    await inputElement.fill("");
-    await inputElement.fill(prompt);
-    logger.info(`Filled input field with prompt: "${prompt}"`);
-
-    // Define common submit selectors
-    const submitSelectors = [
-      'button[type="submit"]',
-      'input[type="submit"]',
-      'button:has-text("Submit")',
-      'button:has-text("Send")',
-      'button:has-text("Search")',
-      'button:has-text("Go")',
-      'button:has-text("Generate")',
-      '[role="button"]:has-text("Submit")',
-      '[role="button"]:has-text("Send")',
-      ...customSubmitSelectors,
-    ];
-
-    // Try to find and click submit button
-    let submitElement: ElementHandle | null = null;
-    for (const selector of submitSelectors) {
-      try {
-        submitElement = await page.waitForSelector(selector, {
-          timeout: elementTimeout,
-          state: "visible",
-        });
-        if (submitElement) {
-          logger.info(`Found submit element with selector: ${selector}`);
-          break;
-        }
-      } catch (error) {
-        if (debugLevel === "verbose") {
-          logger.debug(`Submit selector ${selector} not found or not visible`);
-        }
-      }
-    }
-
-    let method: "button_click" | "enter_key";
-    if (submitElement) {
-      await submitElement.click();
-      method = "button_click";
-      logger.info("Clicked submit button");
-    } else {
-      // Fallback to pressing Enter
-      await inputElement.press("Enter");
-      method = "enter_key";
-      logger.info("Pressed Enter key as fallback");
-    }
-
-    // Wait for potential navigation or response
+  while (retries <= (options.maxRetries || 0)) {
     try {
-      await page.waitForLoadState("networkidle", { timeout: 5000 });
-    } catch (error) {
-      logger.debug("Page did not reach networkidle state within timeout");
+      logger.info(`Processing batch ${batch.id} for URL: ${batch.targetUrl}`);
+
+      browser = await chromium.launch({ headless: true });
+      page = await browser.newPage();
+
+      await page.goto(batch.targetUrl || "");
+
+      // Example: Automate a form on the page
+      await automateForm(page, batch.prompt);
+
+      // Take a screenshot and return it as a base64 string
+      const screenshotBuffer = await page.screenshot({ type: "jpeg" }); // Specify type as jpeg or png
+      const screenshotBase64 = screenshotBuffer.toString("base64");
+
+      logger.info(`Batch ${batch.id} processed successfully.`);
+      return { success: true, screenshot: screenshotBase64 };
+    } catch (error: any) {
+      logger.error(`Error processing batch ${batch.id}: ${error.message}`);
+      retries++;
+      if (retries <= (options.maxRetries || 0)) {
+        logger.warn(
+          `Retrying batch ${batch.id} in ${options.retryDelay || 1000}ms...`
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.retryDelay || 1000)
+        );
+      } else {
+        return { success: false, error: error.message };
+      }
+    } finally {
+      if (page) {
+        await page.close();
+      }
+      if (browser) {
+        await browser.close();
+      }
     }
-
-    const result: AutomationSuccess = {
-      success: true,
-      action: "form_submitted",
-      prompt,
-      method,
-      timestamp,
-      details: `Successfully automated form submission using ${method}`,
-    };
-
-    logger.info("Form automation completed successfully");
-    return result;
-  } catch (error: any) {
-    const errorResult: AutomationError = {
-      success: false,
-      error: error.message,
-      timestamp,
-      details: `Failed to automate form: ${error.message}`,
-    };
-
-    logger.error(`Form automation failed: ${error.message}`);
-    return errorResult;
   }
 }
