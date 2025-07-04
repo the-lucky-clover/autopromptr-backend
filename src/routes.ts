@@ -17,7 +17,7 @@ router.post('/run', async (req: Request, res: Response) => {
     }
 
     // Call launchBrowser with 'url' and optional 'headless' parameter
-    const result = await launchBrowser(url, headless); // Pass 'headless'
+    const result = await launchBrowser({ url, headless }); // Pass as object
 
     res.json({ success: true, data: result });
   } catch (error: any) {
