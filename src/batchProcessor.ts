@@ -1,7 +1,7 @@
 // batchProcessor.ts
 import { chromium, Browser, Page } from "playwright";
-import { automateForm } from "./automation.js";
-import logger from "./logger.js";
+import { automateForm } from "./automation.ts";
+import logger from "./logger.ts";
 
 export interface Batch {
   id?: string;
