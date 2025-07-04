@@ -18,45 +18,48 @@ class SupabaseTransport extends Transport {
     super(opts);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async log(info: any, callback: () => void) {
+  log(info: LogEntry, callback: () => void) {
     setImmediate(() => {
       this.emit("logged", info);
     });
 
-    try {
-      const { batchId, platform, ip } = info;
-
-      await supabase.from("logs").insert({
-        level: info.level,
-        message: info.message,
-        batch_id: batchId || null,
-        platform: platform || null,
-        ip_address: ip || null,
-        timestamp: new Date().toISOString(),
-        service: "autopromptr-backend",
+    // Insert log into Supabase
+    supabase
+      .from("logs")
+      .insert([
+        {
+          level: info.level,
+          message: info.message,
+          timestamp: new Date().toISOString(),
+          meta: JSON.stringify(info),
+        },
+      ])
+      .then(() => {
+        callback();
+      })
+      .catch((error) => {
+        console.error("Failed to log to Supabase:", error);
+        callback();
       });
-    } catch (err: any) {
-      console.error("❌ Failed to log to Supabase:", err.message || err);
-    }
-
-    callback();
   }
 }
 
+// Create Winston logger
 const logger = winston.createLogger({
-  level: "info",
+  level: process.env.LOG_LEVEL || "info",
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-    })
+    winston.format.json()
   ),
+  defaultMeta: { service: "autopromptr-backend" },
   transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-    new winston.transports.File({ filename: "logs/combined.log" }),
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      ),
+    }),
     new SupabaseTransport(),
   ],
 });
