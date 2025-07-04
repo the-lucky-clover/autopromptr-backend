@@ -37,7 +37,7 @@ class SupabaseTransport extends Transport {
       .then(() => {
         callback();
       })
-      .catch((error) => {
+      .catch((error: any) => { // Explicitly type error as any
         console.error("Failed to log to Supabase:", error);
         callback();
       });
