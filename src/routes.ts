@@ -50,11 +50,14 @@ router.post('/run-batch', async (req: Request, res: Response) => {
     
     for (const prompt of prompts) {
       try {
-        // Launch browser for each prompt
+        // Launch browser for each prompt and submit to AI coding platform
         const result = await launchBrowser({ 
           url: targetUrl, 
-          headless: true,
-          prompt: prompt.text || prompt.prompt_text // Handle different prompt field names
+          headless: true
+        }, {
+          promptText: prompt.text || prompt.prompt_text,
+          platform: platform || 'generic', // lovable, bolt, v0, etc.
+          promptId: prompt.id
         });
         
         results.push({
@@ -89,6 +92,65 @@ router.post('/run-batch', async (req: Request, res: Response) => {
 
 // Alternative endpoint structure if your frontend uses /api prefix
 router.post('/api/run-batch', async (req: Request, res: Response) => {
-  // Redirect to the main run-batch handler
-  return router.handle(req, res);
+  // Forward the request to the main run-batch handler
+  try {
+    const { id, name, targetUrl, promptLength, platform, prompts } = req.body;
+    
+    // Validate required fields
+    if (!targetUrl || typeof targetUrl !== 'string') {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing or invalid targetUrl' 
+      });
+    }
+    
+    if (!prompts || !Array.isArray(prompts) || prompts.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Missing or invalid prompts array' 
+      });
+    }
+    
+    // Process the batch
+    const results = [];
+    
+    for (const prompt of prompts) {
+      try {
+        const result = await launchBrowser({ 
+          url: targetUrl, 
+          headless: true
+        }, {
+          promptText: prompt.text || prompt.prompt_text,
+          platform: platform || 'generic',
+          promptId: prompt.id
+        });
+        
+        results.push({
+          promptId: prompt.id,
+          success: true,
+          result: result
+        });
+      } catch (error: any) {
+        console.error(`Error processing prompt ${prompt.id}:`, error);
+        results.push({
+          promptId: prompt.id,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      batchId: id,
+      results: results,
+      totalPrompts: prompts.length,
+      successCount: results.filter(r => r.success).length,
+      failureCount: results.filter(r => !r.success).length
+    });
+    
+  } catch (error: any) {
+    console.error('Error in /api/run-batch endpoint:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
