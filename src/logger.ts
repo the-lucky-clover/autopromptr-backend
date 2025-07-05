@@ -18,29 +18,28 @@ class SupabaseTransport extends Transport {
     super(opts);
   }
 
-  log(info: LogEntry, callback: () => void) {
+  async log(info: LogEntry, callback: () => void) {
     setImmediate(() => {
       this.emit("logged", info);
     });
 
     // Insert log into Supabase
-    supabase
-      .from("logs")
-      .insert([
-        {
-          level: info.level,
-          message: info.message,
-          timestamp: new Date().toISOString(),
-          meta: JSON.stringify(info),
-        },
-      ])
-      .then(() => {
-        callback();
-      })
-      .catch((error: any) => { // Explicitly type error as any
-        console.error("Failed to log to Supabase:", error);
-        callback();
-      });
+    try {
+      await supabase
+        .from("logs")
+        .insert([
+          {
+            level: info.level,
+            message: info.message,
+            timestamp: new Date().toISOString(),
+            meta: JSON.stringify(info),
+          },
+        ]);
+      callback();
+    } catch (error: any) {
+      console.error("Failed to log to Supabase:", error);
+      callback();
+    }
   }
 }
 
@@ -65,3 +64,5 @@ const logger = winston.createLogger({
 });
 
 export default logger;
+
+

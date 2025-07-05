@@ -1,7 +1,7 @@
 // batchProcessor.ts
 import { chromium, Browser, Page } from "playwright";
-import { automateForm } from "./automation.ts";
-import logger from "./logger.ts";
+import { automateForm } from "./automation.js";
+import logger from "./logger.js";
 
 export interface Batch {
   id?: string;
@@ -21,7 +21,7 @@ export interface ProcessOptions {
 export async function processBatch(
   batch: Batch,
   options: ProcessOptions
-): Promise {
+): Promise<any> {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let retries = 0;
@@ -67,3 +67,5 @@ export async function processBatch(
     }
   }
 }
+
+

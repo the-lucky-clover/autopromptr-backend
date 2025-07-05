@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { launchBrowser } from './browserService.ts'; // Ensure the correct path
+import { launchBrowser } from './browserService.js';
 
 export const router = Router();
 
