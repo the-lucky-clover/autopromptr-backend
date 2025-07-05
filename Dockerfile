@@ -13,8 +13,9 @@ COPY package*.json ./
 # Step 1: Install dependencies
 RUN npm install --legacy-peer-deps
 
-# Step 2: Install TypeScript as a devDependency
-RUN npm install typescript --save-dev
+# Step 2: Install TypeScript and necessary type declarations
+RUN npm install typescript --save-dev \
+    && npm install --save-dev @types/express
 
 # Install Playwright browsers with system dependencies
 RUN npx playwright install --with-deps
