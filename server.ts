@@ -13,8 +13,9 @@ const port = process.env.PORT || 3000;
 const allowedOrigins: string[] = [
   'https://bolt-diy-34-1751466323377.vercel.app',
   'https://autopromptr.com',
+  'https://www.autopromptr.com',
+  'https://lovable.app',
   'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
-  'https://lovable.dev',
   'http://localhost:3000',
   'http://localhost:5173',
   'https://k03e2io1v3fx9wvj0vr8qd5q58o56n-fkdo--8080--6e337437.local-credentialless.webcontainer-api.io',
@@ -24,11 +25,10 @@ const lovableProjectRegex = /.*\.lovableproject\.com$/;
 
 const corsOptions: CorsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
+    if (!origin || allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
       return callback(null, true);
     }
-    console.error(`Blocked by CORS: ${origin}`);
+    console.error(`Blocked by CORS (server): ${origin}`);
     return callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
@@ -119,7 +119,6 @@ app.options('*', (_req: Request, res: Response) => {
   res.sendStatus(200);
 });
 
-// Debug: Playwright version
 app.get('/debug/playwright-version', (_req: Request, res: Response) => {
   try {
     const version = require('playwright/package.json').version;
@@ -129,7 +128,6 @@ app.get('/debug/playwright-version', (_req: Request, res: Response) => {
   }
 });
 
-// Debug: Launch Chromium
 app.get('/debug/playwright-launch', async (_req: Request, res: Response) => {
   try {
     const browser = await chromium.launch({ headless: true });
@@ -153,7 +151,6 @@ app.get('/debug/playwright-launch', async (_req: Request, res: Response) => {
   }
 });
 
-// Debug: OS temp directory
 app.get('/debug/tmpdir', (_req: Request, res: Response) => {
   const tmpDir = os.tmpdir();
   res.json({
