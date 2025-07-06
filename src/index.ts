@@ -6,17 +6,29 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // CORS configuration
+const allowedOrigins = [
+  'https://autopromptr.com',
+  'https://www.autopromptr.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://localhost:8080',
+  'https://lovable.app',
+  'https://id-preview--1fec766e-41d8-4e0e-9e5c-277ce2efbe11.lovable.app',
+];
+const lovableProjectRegex = /.*\.lovableproject\.com$/;
+
 const corsOptions = {
-  origin: [
-    'https://autopromptr.com',
-    'https://www.autopromptr.com',
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:8080'
-  ],
+  origin: function (origin: string | undefined, callback: Function) {
+    if (!origin || allowedOrigins.includes(origin) || lovableProjectRegex.test(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`Blocked by CORS (index): ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
