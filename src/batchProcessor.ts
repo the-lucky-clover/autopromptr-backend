@@ -1,7 +1,7 @@
 // batchProcessor.ts
 import { chromium, Browser, Page } from "playwright";
-import { automateForm } from "./automation.js";
-import logger from "./logger.js";
+import { automateForm } from "./automation";
+import logger from "./logger";
 
 export interface Batch {
   id?: string;
@@ -21,7 +21,7 @@ export interface ProcessOptions {
 export async function processBatch(
   batch: Batch,
   options: ProcessOptions
-): Promise<any> {
+): Promise<{ success: boolean; screenshot?: string; error?: string }> {
   let browser: Browser | null = null;
   let page: Page | null = null;
   let retries = 0;
@@ -66,6 +66,7 @@ export async function processBatch(
       }
     }
   }
+  
+  // This should never be reached, but TypeScript requires it
+  return { success: false, error: "Maximum retries exceeded" };
 }
-
-

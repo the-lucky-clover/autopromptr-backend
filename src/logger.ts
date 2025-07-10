@@ -5,12 +5,14 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_KEY || "";
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing SUPABASE_URL or SUPABASE_KEY environment variables");
-}
+// Only initialize Supabase if credentials are provided
+let supabase: SupabaseClient | null = null;
 
-// Initialize Supabase client
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+} else {
+  console.warn("SUPABASE_URL or SUPABASE_KEY not provided. Supabase logging disabled.");
+}
 
 // Custom Winston transport for Supabase
 class SupabaseTransport extends Transport {
@@ -18,28 +20,38 @@ class SupabaseTransport extends Transport {
     super(opts);
   }
 
-  async log(info: LogEntry, callback: () => void) {
+  log(info: LogEntry, callback: () => void) {
     setImmediate(() => {
       this.emit("logged", info);
     });
 
-    // Insert log into Supabase
-    try {
-      await supabase
-        .from("logs")
-        .insert([
-          {
-            level: info.level,
-            message: info.message,
-            timestamp: new Date().toISOString(),
-            meta: JSON.stringify(info),
-          },
-        ]);
+    // Only log to Supabase if client is available
+    if (!supabase) {
       callback();
-    } catch (error: any) {
-      console.error("Failed to log to Supabase:", error);
-      callback();
+      return;
     }
+
+    // Insert log into Supabase
+    const insertPromise = supabase
+      .from("logs")
+      .insert([
+        {
+          level: info.level,
+          message: info.message,
+          timestamp: new Date().toISOString(),
+          meta: JSON.stringify(info),
+        },
+      ]);
+
+    // Handle the promise properly
+    Promise.resolve(insertPromise)
+      .then(() => {
+        callback();
+      })
+      .catch((error: any) => {
+        console.error("Failed to log to Supabase:", error);
+        callback();
+      });
   }
 }
 
@@ -64,5 +76,3 @@ const logger = winston.createLogger({
 });
 
 export default logger;
-
-
