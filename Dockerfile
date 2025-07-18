@@ -1,32 +1,32 @@
-# Use official Playwright image with Node.js and all browser/system dependencies
+# Use Playwright's official Node-based image (includes all dependencies for browser automation)
 FROM mcr.microsoft.com/playwright:focal
 
 # Set working directory inside the container
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package*.json ./
+# Copy only package files first to optimize Docker cache layers
+COPY package.json package-lock.json* ./
 
-# Install ALL dependencies (including devDependencies for build)
+# Install all dependencies (dev + prod) for build
 RUN npm install --legacy-peer-deps
 
-# Install Playwright browsers with system dependencies
+# Install Playwright browsers (required for automation)
 RUN npx playwright install --with-deps
 
-# Copy the rest of the application code
+# Copy the rest of your application code
 COPY . .
 
-# Build the application
+# Compile TypeScript to JavaScript in /dist
 RUN npm run build
 
-# Remove devDependencies after build to reduce image size
+# Remove devDependencies to slim image
 RUN npm prune --production
 
-# Set NODE_ENV to production after build
+# Set environment to production
 ENV NODE_ENV=production
 
-# Expose the app's port
+# Expose your Express app port
 EXPOSE 3000
 
-# Start the application
+# Start the server (via compiled JS)
 CMD ["node", "dist/index.js"]
