@@ -19,7 +19,7 @@ COPY . .
 # Compile TypeScript to JavaScript in /dist
 RUN npm run build
 
-# Remove devDependencies to slim image
+# Remove devDependencies to slim image (optional but helpful in prod)
 RUN npm prune --production
 
 # Set environment to production
