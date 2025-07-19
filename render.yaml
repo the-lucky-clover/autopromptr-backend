@@ -1,18 +1,12 @@
 services:
   - type: web
     name: autopromptr-backend
-    env: node
-    buildCommand: npm install
-    startCommand: npm start
+    env: docker
     plan: free
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
     healthCheckPath: /health
 
-    
     envVars:
       - key: NODE_ENV
         value: production
@@ -20,17 +14,12 @@ services:
         value: 10000
       - key: API_KEY
         generateValue: true
-        
-    # Enhanced resource allocation for better performance
+
     disk:
       name: autopromptr-data
       mountPath: /opt/render/project/data
       sizeGB: 1
-      
-    # Enhanced scaling settings
-    autoDeploy: true
-    
-    # Enhanced headers for better security
+
     headers:
       - path: /*
         name: X-Frame-Options
@@ -41,28 +30,22 @@ services:
       - path: /*
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
-        
-    # Enhanced build settings
+
     buildFilter:
       paths:
-      - server.js
-      - automation.js
-      - package.json
-      - package-lock.json
+        - server.js
+        - automation.js
+        - package.json
+        - package-lock.json
       ignoredPaths:
-      - README.md
-      - .gitignore
-      - "*.md"
-      
-    # Enhanced environment for Puppeteer
-    dockerfilePath: ./Dockerfile
-    
-# Enhanced database for production (optional)
+        - README.md
+        - .gitignore
+        - "*.md"
+
 databases:
   - name: autopromptr-redis
     plan: starter
-    
-# Enhanced notifications
+
 notifications:
   - type: slack
     name: deployment-alerts
