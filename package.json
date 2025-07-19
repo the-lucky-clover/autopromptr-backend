@@ -9,7 +9,8 @@
     "build": "tsc",
     "test": "jest --experimental-vm-modules",
     "lint": "eslint . --ext .js,.mjs,.ts",
-    "audit:fix": "npm audit fix"
+    "audit:fix": "npm audit fix",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.27.0",
