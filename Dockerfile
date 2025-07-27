@@ -30,3 +30,4 @@ EXPOSE 3000
 
 # Start the server (via compiled JS)
 CMD ["node", "dist/index.js"]
+CMD ["npm", "start"]
